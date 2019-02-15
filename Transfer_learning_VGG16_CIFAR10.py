@@ -17,32 +17,34 @@ from CreateNN import CreateNN
 from NNLoader import NNLoader
 from NNSaver import NNSaver
 
-original_network = VGG16(include_top=False, weights=None, input_shape=(32, 32, 3), classes=10)
+original_network = VGG16(include_top=False, weights='imagenet', input_shape=(32, 32, 3), classes=10)
 
-# for layer in original_network.layers:
-#     layer.trainable = False
+for layer in original_network.layers[:10]:
+    layer.trainable = False
 
 
 
 y = Flatten()(original_network.output)
 y = Dropout(0.5)(y)
 y = Dense(4096)(y)
+# y = Dropout(0.10)(y)
 y = Dense(4096)(y)
+# y = Dropout(0.10)(y)
 y = Dense(10)(y)
 y = Softmax(name='predictions')(y)
 original_network = Model(original_network.input, y)
 
 original_network.summary()
 # Wczytanie wag
-# original_network.load_weights('Zapis modelu/19-02-07 10-06/weights-improvement-10-0.55.hdf5', by_name=True)
+original_network.load_weights('Zapis modelu/19-02-08 10-25/weights-improvement-115-0.80.hdf5', by_name=True)
 
 # Parametry modelu/ uczenia
 BATCH_SIZE = 512
 NUM_CLASSES = 10
 
 # Ustawienia kompilera
-# optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
-optimizer = Adam(lr=0.01, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+optimizer = SGD(lr=0.001, momentum=0.9, nesterov=True, decay=1e-6)
+# optimizer = Adam(lr=0.01, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
 original_network.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
 
@@ -154,7 +156,7 @@ test_generator = ImageDataGenerator(rescale=1. / 255,
                                     )
 
 test_generator.fit(x_test)
-
+keras.backend.get_session().run(tf.global_variables_initializer())
 scores = original_network.evaluate_generator(
         test_generator.flow(x_test, y_test, batch_size=BATCH_SIZE),
         steps=TEST_SIZE // BATCH_SIZE,

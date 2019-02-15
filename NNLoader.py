@@ -14,7 +14,7 @@ class NNLoader:
         return model_from_json(model)
 
     @staticmethod
-    def load_CIFAR10():
+    def load_CIFAR10(validation_split=0.9):
 
         NUM_CLASSES = 10
 
@@ -24,7 +24,7 @@ class NNLoader:
         x_test = x_test.astype('float32')
 
         # Wielkości zbiorów danych
-        TRAIN_SIZE = int(0.9 * len(x_train))
+        TRAIN_SIZE = int(validation_split * len(x_train))
         VALIDATION_SIZE = int(len(x_train) - TRAIN_SIZE)
 
         # podział zbioru treningowego na treningowy i walidacyjny

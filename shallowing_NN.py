@@ -1,8 +1,8 @@
 import tensorflow as tf
-import tensorflow.keras as keras
+import keras
 from keras.applications.vgg16 import VGG16
 from keras.datasets import cifar10
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation
 from keras.models import Model, model_from_json
 from keras.utils import np_utils
@@ -21,7 +21,7 @@ model = CreateNN.create_VGG16_for_CIFAR10()
 
 BATCH_SIZE = 256
 NUM_CLASSES = 10
-start_from_layer = 3
+start_from_layer = 10
 
 # y = Flatten()(model.output)
 # y = Dense(4096, activation='relu')(y)
@@ -32,15 +32,15 @@ start_from_layer = 3
 # model = Model(model.input, y)
 
 model.summary()
-# for layer in model.layers[:10]:
-#     layer.trainable = False
+
 
 # model, number_new_outs = NNModifier.add_clasyficator_to_each_conv_layer(model)
 
 for i in range(start_from_layer-1, len(model.layers)):
-
+    model = CreateNN.create_VGG16_for_CIFAR10()
     if type(model.layers[i]) == Conv2D:
-        model = CreateNN.create_VGG16_for_CIFAR10()
+        # keras.backend.set_session('sss')
+
         print('Testowanie ', i, ' warstwy')
         cutted_model = NNModifier.cut_model_to(model, i)
         cutted_model = NNModifier.add_classifier_to_end(cutted_model)
@@ -48,9 +48,10 @@ for i in range(start_from_layer-1, len(model.layers)):
         for layer in cutted_model.layers[:i+1]:
             layer.trainable = False
         cutted_model.summary()
+        del model
 
-        # optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
-        optimizer = Adam(lr=0.1, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+        optimizer = SGD(lr=0.06, momentum=0.9, nesterov=True)
+        # optimizer = Adam(lr=0.1, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
         cutted_model.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
         # Wczytanie bazy zdjęć
@@ -61,27 +62,27 @@ for i in range(start_from_layer-1, len(model.layers)):
         TEST_SIZE = len(x_test)
 
         # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
-        scierzka_zapisu = 'Zapis modelu- ucięte/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
+        scierzka_zapisu = 'Zapis modelu-uciete/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
         scierzka_zapisu_dir = os.path.join(os.getcwd(), scierzka_zapisu)
-        if not os.path.exists(scierzka_zapisu_dir):  # stworzenie folderu jeżeli nie istnieje
-            os.makedirs(scierzka_zapisu_dir)
+        # if not os.path.exists(scierzka_zapisu_dir):  # stworzenie folderu jeżeli nie istnieje
+        #     os.makedirs(scierzka_zapisu_dir)
 
         # Ustawienie ścieżki logów i stworzenie folderu jeżeli nie istnieje
         scierzka_logow = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
         scierzka_logow_dir = os.path.join(os.getcwd(), scierzka_logow)
-        if not os.path.exists(scierzka_logow_dir):  # stworzenie folderu jeżeli nie istnieje
-            os.makedirs(scierzka_logow_dir)
+        # if not os.path.exists(scierzka_logow_dir):  # stworzenie folderu jeżeli nie istnieje
+        #     os.makedirs(scierzka_logow_dir)
 
         # Callback
-        learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.2, patience=7, verbose=1,
-                                                                     mode='auto', cooldown=7, min_lr=0.00001,
+        learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.2, patience=5, verbose=1,
+                                                                     mode='auto', cooldown=5, min_lr=0.00001,
                                                                      min_delta=0.001)
         csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
         tensorBoard = keras.callbacks.TensorBoard(log_dir=scierzka_logow)               # Wizualizacja uczenia
         modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
             filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
             save_best_only=True, period=5, save_weights_only=False)
-        earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=15)  # zatrzymanie uczenia sieci jeżeli
+        earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=35)  # zatrzymanie uczenia sieci jeżeli
                                                                                         # dokładność się nie zwiększa
 
         print('Using real-time data augmentation.')
@@ -130,14 +131,15 @@ for i in range(start_from_layer-1, len(model.layers)):
                 datagen.flow(x_train, y_train, batch_size=BATCH_SIZE),  # Podawanie danych uczących
                 verbose=1,
                 steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
-                epochs=10000,                         # ilość epok treningu
+                epochs=1,                         # ilość epok treningu
                 callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
                 validation_steps=VALIDATION_SIZE // BATCH_SIZE,
                 workers=4,
                 validation_data=val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE),
                 # use_multiprocessing=True,
                 shuffle=True,
-                # initial_epoch=10       # Wskazanie od której epoki rozpocząć uczenie
+                # initial_epoch=1       # Wskazanie od której epoki rozpocząć uczenie
+                # max_queue_size=2
                 )
 
         test_generator = ImageDataGenerator(rescale=1. / 255,
@@ -146,7 +148,7 @@ for i in range(start_from_layer-1, len(model.layers)):
                                             )
 
         test_generator.fit(x_test)
-        keras.backend.get_session().run(tf.global_variables_initializer())
+        # keras.backend.get_session().run(tf.global_variables_initializer())
         scores = cutted_model.evaluate_generator(
             test_generator.flow(x_test, y_test, batch_size=BATCH_SIZE),
             steps=TEST_SIZE // BATCH_SIZE,
@@ -156,11 +158,17 @@ for i in range(start_from_layer-1, len(model.layers)):
         print('Test loss:', scores[0])
         print('Test accuracy:', scores[1])
 
-        accuracy = np.loadtxt('Skutecznosc warstw.txt')
-        accuracy = np.append(accuracy, [i, scores[0], scores[1]])
-        np.savetxt('Skutecznosc warstw.txt', accuracy)
-
+        # accuracy = np.loadtxt('Skutecznosc warstw.txt')
+        # accuracy = np.append(accuracy, [i, scores[0], scores[1]])
+        # np.savetxt('Skutecznosc warstw.txt', accuracy)
+        # tf.reset_default_graph()
         keras.backend.clear_session()
+
+
+        del cutted_model
+        del test_generator
+        del val_datagen
+        del datagen
 
 print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
 print('Wypłycanie sieci')

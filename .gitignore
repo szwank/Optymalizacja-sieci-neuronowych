@@ -2,4 +2,10 @@
 .idea/**
 log/**
 Zapis modelu/**
+wyniki/**
+!Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5
+Zapis modelu-uciete/**
 __pycache__/**
+.hdf5
+training.log
+new_model.png

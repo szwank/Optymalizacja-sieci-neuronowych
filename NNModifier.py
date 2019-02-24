@@ -1,9 +1,14 @@
 import tensorflow.keras as keras
 import tensorflow as tf
 from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Softmax, Lambda
-from keras.models import Model
+from keras.models import Model, model_from_json
 from keras.utils import plot_model
 from CreateNN import CreateNN
+from NNSaver import NNSaver
+import json
+import os
+
+
 class NNModifier:
 
 
@@ -61,38 +66,39 @@ class NNModifier:
 
     @staticmethod
     def remove_chosen_conv_layers(model, layers_to_remove):
+
         # Rozbicie sieci na warstey
-        layers = [l for l in model.layers]
-        model.summary()
-        input = layers[0].output
-
+        # layers = [l for l in model.layers]
+        # model.summary()
+        # input = layers[0].output
+        if not os.path.exists('temp'):  # stworzenie folderu jeżeli nie istnieje
+            os.makedirs('temp')
+        plot_model(model, to_file='temp/original_model.png', show_shapes=True)
         witch_conv = 1  # Licznik warstw konwolucyjnych
+        i = 0
 
-        # dla pierwszej warstwy, zamiana input na x
-        if type(layers[1]) == Conv2D:  # Sprawdzenie czy warstwa jest konwolucyjna
-            if not (witch_conv in layers_to_remove):  # Jeżeli dana warstwa jest na liście to nie dodawaj jej do sieci
-                print(layers[1].input)
-                print(input.shape)
-                config = layers[1].get_config()
-                x = layers[1](input)  # Łączenie warstw sieci neuronowej
-            witch_conv += 1
+        json_model = model.to_json(indent=4)        # przekonwertowanie modelu na dict
+        json_object = json.loads(json_model)
+        for layer in json_object["config"]["layers"]:
+            if layer["class_name"] == 'Conv2D':
+                if witch_conv in layers_to_remove:
+                    json_object = NNModifier.remove_chosen_conv_block_from_json_string(json_object, i)
 
-        for i in range(2, len(layers)):
-            if type(layers[i]) == Conv2D:        # Sprawdzenie czy warstwa jest konwolucyjna
-                if not (witch_conv in layers_to_remove):  # Jeżeli dana warstwa jest na liście to nie dodawaj jej do sieci
-                    print('i:', i)
-                    print(layers[i].input)
-                    # print(x.shape)
-                    config = layers[i].get_config()
-                    x = layers[i](x)  # Łączenie warstw sieci neuronowej
+
+                    # i -= 1      # zmniejszyła się lidzba warstw
                 witch_conv += 1
-            else:
-                print('i:', i)
-                print(layers[i].input)
-                # print(input.shape)
-                x = layers[i](x)  # Łączenie warstw sieci neuronowej Jeżeli nie jest konwolucyjna
+            i += 1
 
-        return Model(inputs=input, outputs=x)
+        # json_object["config"]["layers"][1]["inbound_nodes"][0][0][0]
+        json_model = json.dumps(json_object)
+        model = model_from_json(json_model)
+        model.summary()
+        plot_model(model, to_file='temp/modified_model.png', show_shapes=True)
+        return model
+
+
+
+
 
     @staticmethod
     def remove_last_layer(model):
@@ -134,13 +140,34 @@ class NNModifier:
         return model
 
 
+    @staticmethod
+    def remove_chosen_layer_from_json_string(json_object, layer):
+
+        print('deleting', json_object["config"]["layers"][layer]["name"])
 
 
+        layer_name = json_object["config"]["layers"][layer-1]["name"]
+        json_object["config"]["layers"][layer + 1]["inbound_nodes"][0][0][0] = layer_name
+        del json_object["config"]["layers"][layer]
 
+        return json_object
 
+    @staticmethod
+    def remove_chosen_conv_block_from_json_string(json_object, layer):
 
+        print('Deleting block associated with', json_object["config"]["layers"][layer]["name"])
+        conv_name = json_object["config"]["layers"][layer]["name"]
+        for i in range(3):
+            if (json_object["config"]["layers"][layer]["class_name"] == 'BatchNormalization' or
+                    json_object["config"]["layers"][layer]["class_name"] == 'ReLU' or
+                    json_object["config"]["layers"][layer]["name"] == conv_name):
+                json_object = NNModifier.remove_chosen_layer_from_json_string(json_object, layer)
+            else:
+                break
 
+        print('Block deleted\n')
 
+        return json_object
 
 
 

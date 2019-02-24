@@ -1,14 +1,14 @@
 import tensorflow as tf
-import tensorflow.keras as keras
-from tensorflow.python.keras.datasets import cifar10
-from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.python.keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation
-from tensorflow.python.keras.models import Model, model_from_json
-from tensorflow.python.keras.utils import np_utils
-from tensorflow.python.keras.optimizers import SGD
-from tensorflow.python.keras.layers import Softmax
+import keras
+from keras.datasets import cifar10
+from keras.preprocessing.image import ImageDataGenerator
+from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation
+from keras.models import Model, model_from_json
+from keras.utils import np_utils
+from keras.optimizers import SGD
+from keras.layers import Softmax
 import numpy as np
-from tensorflow.python.keras.utils import plot_model
+from keras.utils import plot_model
 import datetime
 import os
 import json
@@ -17,10 +17,10 @@ from NNLoader import NNLoader
 from NNSaver import NNSaver
 
 # Parametry modelu/ uczenia
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 NUM_CLASSES = 10
 # Stworzenie sieci neuronowej
-# original_network = CreateNN.create_VGG16_for_CIFAR10()
+original_network = CreateNN.create_VGG16_for_CIFAR10(0.0001)
 
 # Zapis seici
 # NNSaver.save(original_network, 'model1.txt')
@@ -30,16 +30,16 @@ NUM_CLASSES = 10
 # original_network = NNLoader.load('model1.txt')
 # original_network.summary()
 # Wczytanie wag
-# original_network.load_weights('Zapis modelu/19-02-13 08-55/weights-improvement-210-0.87.hdf5', by_name=True)
-# original_network = keras.models.load_model('Zapis modelu/19-02-12 13-54/weights-improvement-190-0.88.hdf5')
-original_network = keras.models.load_model('Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5')
+# original_network.load_weights('Zapis modelu/19-02-22 16-35/weights-improvement-238-0.88.hdf5', by_name=True)
+original_network = keras.models.load_model('Zapis modelu/19-02-23 10-22/weights-improvement-100-0.79.hdf5')
+# original_network = keras.models.load_model('Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5')
 original_network.summary()
 # original_network.load_weights('Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5', by_name=True)
 # Rysowanie struktury sieci neuronowej
 # plot_model(original_network, to_file='model.png')       # Stworzenie pliku z modelem sieci
 
 # Ustawienia kompilera
-optimizer = SGD(lr=0, momentum=0.9, nesterov=True, decay=0.01)
+optimizer = SGD(lr=0.001, momentum=0.9, nesterov=True, decay=0)
 original_network.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
 
@@ -62,12 +62,12 @@ if not os.path.exists(scierzka_logow_dir):  # stworzenie folderu jeżeli nie ist
     os.makedirs(scierzka_logow_dir)
 
 # Callback
-learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.2, patience=3, verbose=1, mode='auto', cooldown=2, min_lr=0.000000001)
+# learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=3, verbose=1, mode='auto', cooldown=2, min_lr=0.001)
 csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
 tensorBoard = keras.callbacks.TensorBoard(log_dir=scierzka_logow)               # Wizualizacja uczenia
 modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
     filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
-    save_best_only=True, period=10, save_weights_only=False)
+    save_best_only=True, period=7, save_weights_only=False)
 earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=75)  # zatrzymanie uczenia sieci jeżeli
                                                                                 # dokładność się nie zwiększa
 
@@ -111,20 +111,22 @@ val_datagen = ImageDataGenerator(rescale=1. / 255,
                                  samplewise_std_normalization=True,  # divide each input by its std
                                  )
 val_datagen.fit(x_validation)
-keras.backend.get_session().run(tf.global_variables_initializer())
+# keras.backend.get_session().run(tf.global_variables_initializer())
 original_network.fit_generator(
         datagen.flow(x_train, y_train, batch_size=BATCH_SIZE),  # Podawanie danych uczących
         verbose=1,
         steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
-        epochs=10000,                         # ilość epok treningu
-        callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
+        epochs=200,                         # ilość epok treningu
+        callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping],
         validation_steps=VALIDATION_SIZE // BATCH_SIZE,
         workers=4,
         validation_data=val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE),
-        # use_multiprocessing=True,
+        use_multiprocessing=True,
         shuffle=True,
-        initial_epoch=0      # Wskazanie od której epoki rozpocząć uczenie
+        initial_epoch=100     # Wskazanie od której epoki rozpocząć uczenie
         )
+
+# original_network.fit(x=x_train, y=y_train, batch_size=BATCH_SIZE, epochs=10, callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation], validation_data=(x_validation, y_validation))
 
 test_generator = ImageDataGenerator(rescale=1. / 255,
                                     samplewise_center=True,  # set each sample mean to 0

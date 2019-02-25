@@ -4,6 +4,7 @@ from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Acti
 from keras.models import Model, model_from_json
 from keras.utils import plot_model
 from CreateNN import CreateNN
+from Create_NN_graph import Create_NN_graph
 from NNSaver import NNSaver
 import json
 import os
@@ -48,10 +49,12 @@ class NNModifier:
 
         return new_model, number_new_outs
 
+
     @staticmethod
     def cut_model_to(model, layer):
-
+        """Metoda zwraca model ucięty do wskazanej warstwy konwolucyjnej."""
         return Model(model.input, model.layers[layer].output)
+
 
     @staticmethod
     def add_classifier_to_end(model, number_of_neurons=512, number_of_classes=10):
@@ -64,45 +67,53 @@ class NNModifier:
 
         return Model(model.input, y)
 
+
     @staticmethod
-    def remove_chosen_conv_layers(model, layers_to_remove):
+    def remove_chosen_conv_layers(model, layers_numbers_to_remove):
+        """Metoda usuwa wskazane warstwy konwolucyjne wraz z odpowiadającymi im warstwami Batch normalization oraz ReLU
+        jeżeli takie istnieją. Usuwanie odbywa się na słowniku przekonwertowanych z JSON. W konsoli wypisywane są nazwy
+        usuwanych warstw. Metoda towrzy grafy sieci przed i po usunięciu warst w folderze temp. Nazwy plików to
+        odpowiednio original_model.png oraz shallowed_model.png.
 
-        # Rozbicie sieci na warstey
-        # layers = [l for l in model.layers]
-        # model.summary()
-        # input = layers[0].output
-        if not os.path.exists('temp'):  # stworzenie folderu jeżeli nie istnieje
-            os.makedirs('temp')
-        plot_model(model, to_file='temp/original_model.png', show_shapes=True)
+        Argumęty:
+        model- model sieci neuronowej która jest usuwana
+        layers_numbers_to_remove- numery warstw konwolucyjnych do usunięcia. Warstwy konwolucyjne liczone są kolejno po
+        sobie, tzn nie uwzględnia się przy tym innych warstw.
+
+        Zwraza:
+        model sieci neurnowej z usuniętymi warstwami.
+        """
+
+        Create_NN_graph.create_NN_graph(model, name='original_model.png')   # Utworzenie grafu orginalnej sieci
+
+        # Inicjalizacja zmiennych
         witch_conv = 1  # Licznik warstw konwolucyjnych
-        i = 0
+        i = 0   # Licznik warstw sieci
 
-        json_model = model.to_json(indent=4)        # przekonwertowanie modelu na dict
+        json_model = model.to_json(indent=4)        # Przekonwertowanie modelu na słownik
         json_object = json.loads(json_model)
-        for layer in json_object["config"]["layers"]:
-            if layer["class_name"] == 'Conv2D':
-                if witch_conv in layers_to_remove:
+
+        for layer in json_object["config"]["layers"]:  # Iteracja po warstwach w modelu
+            if layer["class_name"] == 'Conv2D':     # Sprawdzenie czy warstwa jest konwolucyjna
+                if witch_conv in layers_numbers_to_remove:  # sprawdzenie czy warstwa jest na liście warstw do usunięcia
+
+                    # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
                     json_object = NNModifier.remove_chosen_conv_block_from_json_string(json_object, i)
 
-
-                    # i -= 1      # zmniejszyła się lidzba warstw
                 witch_conv += 1
             i += 1
 
-        # json_object["config"]["layers"][1]["inbound_nodes"][0][0][0]
-        json_model = json.dumps(json_object)
+        json_model = json.dumps(json_object)# przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
         model = model_from_json(json_model)
-        model.summary()
-        plot_model(model, to_file='temp/modified_model.png', show_shapes=True)
+
+        Create_NN_graph.create_NN_graph(model, name='shallowed_model.png')   # Utowrzenie grafu zmodyfikowanej sieci
+
         return model
-
-
-
 
 
     @staticmethod
     def remove_last_layer(model):
-        # Rozbicie sieci na warstey
+        # Rozbicie sieci na warstwy
         layers = [l for l in model.layers]
 
         input = layers[0].output
@@ -114,54 +125,76 @@ class NNModifier:
         return Model(model.input, x)
 
 
-
     @staticmethod
-    def add_loss_layer_for_knowledge_distillation(model, alpha=0.5, T=1):
+    def add_loss_layer_for_knowledge_distillation(model, num_classes, alpha=0.5, T=1):
         """Dodanie warstwy obliczającej loss sieci neuronowej. Warstwa dodawana jest na koniec sieci neuronowej.
         Dodatkowo dodawane są dwa dodatkowe wejścia ground_truth, logits. Są to odpowiedzi sieci orginalnej oraz jej
-        wartości sprzed wejścia na softmax.
+        wartości sprzed wejścia na softmax. Kolejnośc wejśc w nowej sieci: ground_truth, logits, wejście do
+        zoptymalizowanej sieci.
 
         # Argumenty:
         model- model sieci do której ma być dodana warstwa
         alfa- parametr wyliczania lossu. Waga odpowiadająca za logitsy
         T- temperatura Logitsów
 
-        Zwraza:
-        model sieci"""
+        Zwraca:
+        model sieci.
+        """
 
-        ground_truth = Input(shape=10)
-        logits = Input(shape=10)
+        ground_truth = Input(shape=10, name='ground_truth')  # Dodatkowej wejście na wyjścia z orginalnej sieci(SoftMax)
+        logits = Input(shape=10, name='logits')  # Dodatkowe wejście na wyjścia z orginalnej sieci(warstwa przed SoftMax)
 
-        loss = Lambda(CreateNN.loss_for_knowledge_distillation(alpha=alpha, T=T), name='loss')([ground_truth, logits,
-                                                                                model.layers[-1].outputs,
-                                                                                model.layers[-2].outputs])
+        # Warstwa obliczająca loss dla procesu knowledge distillation
+        loss = Lambda(CreateNN.loss_for_knowledge_distillation, name='loss')([ground_truth, logits,
+                                                                                model.layers[-1].output,
+                                                                                model.layers[-2].output])
 
-        model = Model(model.inputs, loss)
+        model = Model(inputs=(ground_truth, logits, model.input),  outputs=loss)  # dodanie warstwy do modelu
         return model
 
 
     @staticmethod
-    def remove_chosen_layer_from_json_string(json_object, layer):
+    def remove_chosen_layer_from_json_string(json_object, layer_number):
+        """Metoda usuwa wybraną warstwę ze słownika pythonowego. W konsoli wypisywana jest nazwa usuwanej warstwy.
 
-        print('deleting', json_object["config"]["layers"][layer]["name"])
+        Argumęty:
+        jason_object- słownik pythonowy reprezętujący struktóre sieci neuronowej.
+        layer_number- numer warstwy do usunięcia
+
+        Zwraca:
+        słownik pythonowy ze zmotyfikowaną strukturą sieci neuronowej."""
+
+        print('deleting', json_object["config"]["layers"][layer_number]["name"])  # wypisanie nazwy usuwanej warstwy
 
 
-        layer_name = json_object["config"]["layers"][layer-1]["name"]
-        json_object["config"]["layers"][layer + 1]["inbound_nodes"][0][0][0] = layer_name
-        del json_object["config"]["layers"][layer]
+        layer_name = json_object["config"]["layers"][layer_number - 1]["name"]  # Poranie nazwy warstwy porzedającej usuwaną
+        json_object["config"]["layers"][layer_number + 1]["inbound_nodes"][0][0][0] = layer_name    # Podmiana połączenia w modelu
+        del json_object["config"]["layers"][layer_number]   # Usunięcia właściwej warstwy ze słownika
 
         return json_object
 
-    @staticmethod
-    def remove_chosen_conv_block_from_json_string(json_object, layer):
 
-        print('Deleting block associated with', json_object["config"]["layers"][layer]["name"])
-        conv_name = json_object["config"]["layers"][layer]["name"]
+    @staticmethod
+    def remove_chosen_conv_block_from_json_string(json_object, layer_number):
+        """Metoda usuwa wskazaną warstwę konwolucyjną i przynależne do niej warstwy batch normalization oraz ReLU.
+        W konsoli wypisywane są nazwy usuwanych warstw.
+
+        Argumęty:
+        jason_object- słownik pythonowy reprezętujący struktóre sieci neuronowej.
+        layer_number- numer warstwy do usunięcia
+
+        Zwraca:
+        słownik pythonowy ze zmotyfikowaną strukturą sieci neuronowej."""
+
+        # Wypisanie nazwy usuwanej warstwy konwolucyjnej
+        conv_name = json_object["config"]["layers"][layer_number]["name"]  # Pobranie nazwy usuwanej warstwy
+        print('Deleting block associated with', conv_name)
+        # Sprawdzanie czy trzy następne warstwy to usuwana warstwa konwolucyjna i jej batch normalization oraz ReLU.
         for i in range(3):
-            if (json_object["config"]["layers"][layer]["class_name"] == 'BatchNormalization' or
-                    json_object["config"]["layers"][layer]["class_name"] == 'ReLU' or
-                    json_object["config"]["layers"][layer]["name"] == conv_name):
-                json_object = NNModifier.remove_chosen_layer_from_json_string(json_object, layer)
+            if (json_object["config"]["layers"][layer_number]["class_name"] == 'BatchNormalization' or
+                    json_object["config"]["layers"][layer_number]["class_name"] == 'ReLU' or
+                    json_object["config"]["layers"][layer_number]["name"] == conv_name):
+                json_object = NNModifier.remove_chosen_layer_from_json_string(json_object, layer_number) # Usunięcie warstwy
             else:
                 break
 

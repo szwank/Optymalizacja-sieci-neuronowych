@@ -1,4 +1,4 @@
-﻿# ignorowanie zawartości folderu
+﻿# Ignorowanie zawartości folderu
 .idea/**
 log/**
 Zapis modelu/**
@@ -8,6 +8,9 @@ Prace naukowe/**
 !Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5
 Zapis modelu-uciete/**
 __pycache__/**
+data/**
+
+# Ignorowanie poszczegulnych plików
 .hdf5
 training.log
 new_model.png

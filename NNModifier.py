@@ -108,6 +108,9 @@ class NNModifier:
 
         Create_NN_graph.create_NN_graph(model, name='shallowed_model.png')   # Utowrzenie grafu zmodyfikowanej sieci
 
+        if 'weights_save.h5' in os.listdir('temp/'):  # Usunięcie wag sieci
+            os.remove('temp/weights_save.h5')
+
         return model
 
 
@@ -141,15 +144,17 @@ class NNModifier:
         model sieci.
         """
 
-        ground_truth = Input(shape=10, name='ground_truth')  # Dodatkowej wejście na wyjścia z orginalnej sieci(SoftMax)
-        logits = Input(shape=10, name='logits')  # Dodatkowe wejście na wyjścia z orginalnej sieci(warstwa przed SoftMax)
+        ground_truth = Input(shape=(10, ), name='ground_truth')  # Dodatkowej wejście na wyjścia z orginalnej sieci(SoftMax)
+        logits = Input(shape=(10, ), name='logits')  # Dodatkowe wejście na wyjścia z orginalnej sieci(warstwa przed SoftMax)
 
         # Warstwa obliczająca loss dla procesu knowledge distillation
         loss = Lambda(CreateNN.loss_for_knowledge_distillation, name='loss')([ground_truth, logits,
                                                                                 model.layers[-1].output,
                                                                                 model.layers[-2].output])
+        # label = Softmax(name='test')(model.layers[-2].output)
 
         model = Model(inputs=(ground_truth, logits, model.input),  outputs=loss)  # dodanie warstwy do modelu
+        Create_NN_graph.create_NN_graph(model, name='model_with_loss_layer')
         return model
 
 
@@ -201,6 +206,10 @@ class NNModifier:
         print('Block deleted\n')
 
         return json_object
+
+    @staticmethod
+    def remove_loos_layer(model):
+        return Model(inputs=model.input[(2)], outputs=model.layers[-2].output)
 
 
 

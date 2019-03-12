@@ -16,6 +16,8 @@ class CreateNN:
         x = ReLU()(x)
         x = MaxPool2D(pool_size=(2, 2))(x)
 
+        # x = Dropout(0.4)(x)
+
         x = Conv2D(128, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
@@ -24,6 +26,8 @@ class CreateNN:
         x = ReLU()(x)
         x = MaxPool2D(pool_size=(2, 2))(x)
 
+        # x = Dropout(0.5)(x)
+
         x = Conv2D(256, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
@@ -34,6 +38,8 @@ class CreateNN:
         x = BatchNormalization()(x)
         x = ReLU()(x)
         x = MaxPool2D(pool_size=(2, 2))(x)
+
+        # x = Dropout(0.6)(x)
 
         x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
         x = BatchNormalization()(x)
@@ -46,6 +52,8 @@ class CreateNN:
         x = ReLU()(x)
         x = MaxPool2D(pool_size=(2, 2))(x)
 
+        # x = Dropout(0.7)(x)
+
         x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
@@ -55,9 +63,11 @@ class CreateNN:
         x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
+
+        # x = Dropout(0.2)(x)
 
         x = Flatten()(x)
-        x = Dense(512)(x)
+        x = Dense(2048)(x)
         x = Dense(10)(x)
         x = BatchNormalization()(x)
         x = Softmax()(x)
@@ -127,7 +137,7 @@ class CreateNN:
         return model
 
     @staticmethod
-    def loss_for_knowledge_distillation(args, alpha=0.01, T=0.01):
+    def loss_for_knowledge_distillation(args, alpha=10, T=100):
         """Sztuczka! Zamiana obliczania lossu sieci neurnonowej w ostatniej warstwie
 
         # Argumenty
@@ -138,12 +148,12 @@ class CreateNN:
 
         ground_truth, logits, ground_truth_student, logits_student = args
 
-        first_part = - K.sum(ground_truth * K.log(ground_truth_student))
+        first_part = - K.sum(ground_truth * K.log(ground_truth_student + K.epsilon()), axis=1, keepdims=True)
 
-        q = K.exp(logits_student/T) / K.sum(K.exp(logits_student/T))
-        p = K.exp(logits/T) / K.sum(K.exp(logits/T))
+        q = K.exp(logits_student/T) / K.sum(K.exp(logits_student/T + K.epsilon()), axis=1, keepdims=True)
+        p = K.exp(logits/T) / K.sum(K.exp(logits/T + K.epsilon()), axis=1, keepdims=True)
 
-        second_part = - alpha * K.sum(p * K.log(q))
+        second_part = - alpha * K.sum(p * K.log(q + K.epsilon()), axis=1, keepdims=True)
 
         return first_part + second_part
 

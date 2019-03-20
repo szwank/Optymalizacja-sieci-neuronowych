@@ -67,10 +67,10 @@ class CreateNN:
         # x = Dropout(0.2)(x)
 
         x = Flatten()(x)
-        x = Dense(2048)(x)
-        x = Dense(10)(x)
+        x = Dense(512)(x)
         x = BatchNormalization()(x)
-        x = Softmax()(x)
+        x = ReLU()(x)
+        x = Dense(10, activation='softmax', kernel_regularizer=regularizers.l2(weight_decay))(x)
 
         model = Model(inputs=inputs, outputs=x)
         return model
@@ -137,7 +137,7 @@ class CreateNN:
         return model
 
     @staticmethod
-    def loss_for_knowledge_distillation(args, alpha=10, T=100):
+    def loss_for_knowledge_distillation(args, alpha=0.1, T=100):
         """Sztuczka! Zamiana obliczania lossu sieci neurnonowej w ostatniej warstwie
 
         # Argumenty

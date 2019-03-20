@@ -1,13 +1,14 @@
 import os
 import shutil
-
+from os.path import dirname, abspath
 def remove_empty_dir(dir):
     # Pobranie listy dostępnych folderów
     folder_list = os.listdir(path=dir)
 
     for folder in folder_list:
-        if not os.listdir(path=dir + '/' + folder):
-            os.rmdir(dir + folder)  # Usunięcie pustych folderów
+        if not os.path.isfile(path=dir + '/' + folder):     # Sprawdzenie czy to nie jest plik
+            if not os.listdir(path=dir + '/' + folder):     # Sprawdzenie czy folder jest pusty
+                os.rmdir(dir + '/' +folder)  # Usunięcie pustych folderów
 
 def remove_insignificant_dir(dir, number_files_to_be_insignificant=2):
     # Pobranie listy dostępnych folderów
@@ -23,7 +24,7 @@ def remove_insignificant_dir(dir, number_files_to_be_insignificant=2):
 
 if __name__ == "__main__":
     # Usunięcie pustych folderów w folderze zapis modelu
-    dir_to_search = 'Zapis modelu'
+    dir_to_search = dirname(dirname(abspath(__file__))) + '/Zapis modelu'
     remove_empty_dir(dir_to_search)
 
     # Usunięcie folderów mniej niż 3 pliki

@@ -1,6 +1,8 @@
 import tensorflow.keras as keras
 import tensorflow as tf
-from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Softmax, Lambda
+from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Softmax, Lambda,\
+    BatchNormalization, ReLU
+from keras import regularizers
 from keras.models import Model, model_from_json
 from keras.utils import plot_model
 from CreateNN import CreateNN
@@ -57,13 +59,15 @@ class NNModifier:
 
 
     @staticmethod
-    def add_classifier_to_end(model, number_of_neurons=512, number_of_classes=10):
+    def add_classifier_to_end(model, number_of_neurons=512, number_of_classes=10, weight_decay=0.0001):
 
         y = model.output
         y = Flatten()(y)
-        y = Dense(number_of_neurons)(y)
-        y = Dense(number_of_classes)(y)
-        y = Softmax()(y)
+        y = Dense(number_of_neurons, name='Added_classifier_1')(y)
+        y = BatchNormalization(name='Added_normalization_layer')(y)
+        y = ReLU(name='Added_ReLU')(y)
+        y = Dense(number_of_classes, name='Added_classifier_2', kernel_regularizer=regularizers.l2(weight_decay))(y)
+        y = Softmax(name='Added_Softmax')(y)
 
         return Model(model.input, y)
 

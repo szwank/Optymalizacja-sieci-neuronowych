@@ -21,145 +21,164 @@ from DataGenerator_for_knowledge_distillation import DG_for_kd
 def loss_for_knowledge_distillation(y_true, y_pred):
     return y_pred
 
-def assesing_conv_layers(dir_to_model, start_from_layer= 4, BATCH_SIZE=256):
+def add_score_to_file(score, file='Skutecznosc warstw.txt'):
+    """Dopisanie wyniku klasyfikatora do pliku tekstowego"""
+    accuracy = np.loadtxt(file)
+    accuracy = np.append(accuracy, [score[2], score[0], score[1]])
+    np.savetxt(file, accuracy)
+
+def assesing_conv_layers(dir_to_model, start_from_layer= 1, BATCH_SIZE=256):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
     model = load_model(dir_to_model)
     model.summary()
+    count_conv_layer = 0      # Licznik warstw konwolucyjnych.
+    for i in range(len(model.layers)):
 
-    for i in range(start_from_layer-1, len(model.layers)):
-        model = load_model(dir_to_model)
+        model = load_model(dir_to_model)  # Wczytanie orginalnego modelu z wagami
         if type(model.layers[i]) == Conv2D:
-            # keras.backend.set_session('sss')
+            count_conv_layer += 1     # Zwiekszenie licznika
 
-            print('Testowanie ', i, ' warstwy')
-            cutted_model = NNModifier.cut_model_to(model, i + 2)    # i + 2 ponieważ trzeba uwzględnić jeszcze warstwe
-                                                                    # normalizującą i aktywacij
+            if start_from_layer <= i:
+                print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
+                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 2)  # i + 2 ponieważ trzeba uwzględnić
+                # jeszcze warstwę normalizującą i ReLU
 
-            for layer in cutted_model.layers:   # Zamrożenie wszystkich warstw
-                layer.trainable = False
+                for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw
+                    layer.trainable = False
 
-            cutted_model = NNModifier.add_classifier_to_end(cutted_model)
-            cutted_model.load_weights('Zapis modelu/VGG16-CIFAR10-0.88acc.hdf5', by_name=True)
+                cutted_model = NNModifier.add_classifier_to_end(cutted_model)
 
-            cutted_model.summary()
-            del model       # usunięcie modelu z pamięci karty(nie jestem pewny czy go usuwa)
+                # wczytanie wag do sieci
+                cutted_model.load_weights('Zapis modelu/VGG16-CIFAR10-0.88acc.hdf5', by_name=True)
+                cutted_model.summary()
 
-            optimizer = SGD(lr=0.001, momentum=0.9, nesterov=True)
-            # optimizer = Adam(lr=0.1, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-            cutted_model.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+                del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
 
-            # Wczytanie bazy zdjęć
-            [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+                scores = train_and_asses_network(cutted_model, BATCH_SIZE)
 
-            TRAIN_SIZE = len(x_train)
-            VALIDATION_SIZE = len(x_validation)
-            TEST_SIZE = len(x_test)
+                scores.append(i)
+                add_score_to_file(scores)
 
-            # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
-            scierzka_zapisu = 'Zapis modelu-uciete/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + 'warstwa' +
-                                                           str(i) + '/')
-            scierzka_zapisu_dir = os.path.join(os.getcwd(), scierzka_zapisu)
-            if not os.path.exists(scierzka_zapisu_dir):  # stworzenie folderu jeżeli nie istnieje
-                os.makedirs(scierzka_zapisu_dir)
-
-            # Ustawienie ścieżki logów i stworzenie folderu jeżeli nie istnieje
-            scierzka_logow = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + 'warstwa' + str(i) + '/')
-            scierzka_logow_dir = os.path.join(os.getcwd(), scierzka_logow)
-            if not os.path.exists(scierzka_logow_dir):  # stworzenie folderu jeżeli nie istnieje
-                os.makedirs(scierzka_logow_dir)
-
-            # Callback
-            learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
-                                                                         mode='auto', cooldown=5, min_lr=0.00005,
-                                                                         min_delta=0.0005)
-            csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
-            tensorBoard = keras.callbacks.TensorBoard(log_dir=scierzka_logow)               # Wizualizacja uczenia
-            modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
-                filepath=scierzka_zapisu + "weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
-                save_best_only=True, period=5, save_weights_only=False)
-            earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=35)  # zatrzymanie uczenia sieci jeżeli
-                                                                                            # dokładność się nie zwiększa
-
-            print('Using real-time data augmentation.')
-            # Agmentacja denych w czasie rzeczywistym
-            datagen= ImageDataGenerator(
-                    featurewise_center=False,  # set input mean to 0 over the dataset
-                    samplewise_center=True,  # set each sample mean to 0
-                    featurewise_std_normalization=False,  # divide inputs by std of the dataset
-                    samplewise_std_normalization=True,  # divide each input by its std
-                    zca_whitening=False,  # apply ZCA whitening
-                    zca_epsilon=1e-06,  # epsilon for ZCA whitening
-                    rotation_range=90,  # randomly rotate images in the range (degrees, 0 to 180)
-                    # randomly shift images horizontally (fraction of total width)
-                    width_shift_range=0.1,
-                    # randomly shift images vertically (fraction of total height)
-                    height_shift_range=0.1,
-                    # shear_range=0.1,  # set range for random shear. Pochylenie zdjęcia w kierunku przeciwnym do wskazówek zegara
-                    zoom_range=0.1,  # set range for random zoom
-                    channel_shift_range=0.1,  # set range for random channel shifts
-                    # set mode for filling points outside the input boundaries
-                    fill_mode='nearest',
-                    cval=0.,  # value used for fill_mode = "constant"
-                    horizontal_flip=True,  # randomly flip images
-                    vertical_flip=True,  # randomly flip images
-                    # set rescaling factor (applied before any other transformation)
-                    rescale=1./255,  # Przeskalowanie wejścia
-                    # set function that will be applied on each input
-                    preprocessing_function=None,
-                    # image data format, either "channels_first" or "channels_last"
-                    data_format=None,
-                    # fraction of images reserved for validation (strictly between 0 and 1)
-                    validation_split=0)
-
-            # Compute quantities required for feature-wise normalization
-            # (std, mean, and principal components if ZCA whitening is applied).
-            datagen.fit(x_train)
-
-            val_datagen = ImageDataGenerator(rescale=1. / 255,
-                                             samplewise_center=True,  # set each sample mean to 0
-                                             samplewise_std_normalization=True,  # divide each input by its std
-                                             )
-            val_datagen.fit(x_validation)
-
-            keras.backend.get_session().run(tf.global_variables_initializer())
-            cutted_model.fit_generator(
-                    datagen.flow(x_train, y_train, batch_size=BATCH_SIZE),  # Podawanie danych uczących
-                    verbose=1,
-                    steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
-                    epochs=1000,                         # ilość epok treningu
-                    callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
-                    validation_steps=VALIDATION_SIZE // BATCH_SIZE,
-                    workers=10,
-                    validation_data=val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE),
-                    # use_multiprocessing=True,
-                    shuffle=True,
-                    # initial_epoch=1       # Wskazanie od której epoki rozpocząć uczenie
-                    # max_queue_size=2
-                    )
-
-            test_generator = ImageDataGenerator(rescale=1. / 255,
-                                                samplewise_center=True,  # set each sample mean to 0
-                                                samplewise_std_normalization=True,  # divide each input by its std
-                                                )
-
-            test_generator.fit(x_test)
-            # keras.backend.get_session().run(tf.global_variables_initializer())
-            scores = cutted_model.evaluate_generator(
-                test_generator.flow(x_test, y_test, batch_size=BATCH_SIZE),
-                steps=TEST_SIZE // BATCH_SIZE,
-                verbose=1,
-            )
-
-            print('Test loss:', scores[0])
-            print('Test accuracy:', scores[1])
-
-            accuracy = np.loadtxt('Skutecznosc warstw.txt')
-            accuracy = np.append(accuracy, [i, scores[0], scores[1]])
-            np.savetxt('Skutecznosc warstw.txt', accuracy)
-            # tf.reset_default_graph()
-            keras.backend.clear_session()
+                # tf.reset_default_graph()
+                keras.backend.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
+
+def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
+    """Funkcja trenująca i oceniająca skuteczność sieci"""
+    optimizer = SGD(lr=0.001, momentum=0.9, nesterov=True)
+    # optimizer = Adam(lr=0.1, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+    cutted_model.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+
+    # Wczytanie bazy zdjęć
+    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+
+    TRAIN_SIZE = len(x_train)
+    VALIDATION_SIZE = len(x_validation)
+    TEST_SIZE = len(x_test)
+
+    # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
+    dir_name = str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") +
+                   'warstw_' + str(model_ID) + '_konwolucyjnych')
+    relative_save_model_path = os.path.join('Zapis modelu-uciete/',
+                                            datetime.datetime.now().strftime("%y-%m-%d %H-%M"), dir_name)
+    absolute_save_model_path = os.path.join(os.getcwd(), relative_save_model_path)
+    if not os.path.exists(absolute_save_model_path):  # stworzenie folderu jeżeli nie istnieje
+        os.makedirs(absolute_save_model_path)
+
+    # Ustawienie ścieżki logów i stworzenie folderu jeżeli nie istnieje
+    relative_log_path = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + 'warstw_' +
+                                     str(model_ID) + '_konwolucyjnych' + '/')
+    absolute_log_path = os.path.join(os.getcwd(), relative_log_path)
+    if not os.path.exists(absolute_log_path):  # stworzenie folderu jeżeli nie istnieje
+        os.makedirs(absolute_log_path)
+
+    # Callback
+    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
+                                                                 mode='auto', cooldown=5, min_lr=0.00005,
+                                                                 min_delta=0.0005)
+    csv_logger = keras.callbacks.CSVLogger('training.log')  # Tworzenie logów
+    tensorBoard = keras.callbacks.TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
+    modelCheckPoint = keras.callbacks.ModelCheckpoint(  # Zapis sieci podczas uczenia
+        filepath=relative_save_model_path + "weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
+        save_best_only=True, period=5, save_weights_only=False)
+    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=35)  # zatrzymanie uczenia sieci jeżeli
+    # dokładność się nie zwiększa
+
+    print('Using real-time data augmentation.')
+    # Agmentacja denych w czasie rzeczywistym
+    datagen = ImageDataGenerator(
+        featurewise_center=False,  # set input mean to 0 over the dataset
+        samplewise_center=True,  # set each sample mean to 0
+        featurewise_std_normalization=False,  # divide inputs by std of the dataset
+        samplewise_std_normalization=True,  # divide each input by its std
+        zca_whitening=False,  # apply ZCA whitening
+        zca_epsilon=1e-06,  # epsilon for ZCA whitening
+        rotation_range=90,  # randomly rotate images in the range (degrees, 0 to 180)
+        # randomly shift images horizontally (fraction of total width)
+        width_shift_range=0.1,
+        # randomly shift images vertically (fraction of total height)
+        height_shift_range=0.1,
+        # shear_range=0.1,  # set range for random shear. Pochylenie zdjęcia w kierunku przeciwnym do wskazówek zegara
+        zoom_range=0.1,  # set range for random zoom
+        channel_shift_range=0.1,  # set range for random channel shifts
+        # set mode for filling points outside the input boundaries
+        fill_mode='nearest',
+        cval=0.,  # value used for fill_mode = "constant"
+        horizontal_flip=True,  # randomly flip images
+        vertical_flip=True,  # randomly flip images
+        # set rescaling factor (applied before any other transformation)
+        rescale=1. / 255,  # Przeskalowanie wejścia
+        # set function that will be applied on each input
+        preprocessing_function=None,
+        # image data format, either "channels_first" or "channels_last"
+        data_format=None,
+        # fraction of images reserved for validation (strictly between 0 and 1)
+        validation_split=0)
+
+    # Compute quantities required for feature-wise normalization
+    # (std, mean, and principal components if ZCA whitening is applied).
+    datagen.fit(x_train)
+
+    val_datagen = ImageDataGenerator(rescale=1. / 255,
+                                     samplewise_center=True,  # set each sample mean to 0
+                                     samplewise_std_normalization=True,  # divide each input by its std
+                                     )
+    val_datagen.fit(x_validation)
+
+    keras.backend.get_session().run(tf.global_variables_initializer())
+    cutted_model.fit_generator(
+        datagen.flow(x_train, y_train, batch_size=BATCH_SIZE),  # Podawanie danych uczących
+        verbose=1,
+        steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
+        epochs=1000,  # ilość epok treningu
+        callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
+        validation_steps=VALIDATION_SIZE // BATCH_SIZE,
+        workers=10,
+        validation_data=val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE),
+        # use_multiprocessing=True,
+        shuffle=True,
+        # initial_epoch=1       # Wskazanie od której epoki rozpocząć uczenie
+        # max_queue_size=2
+    )
+
+    test_generator = ImageDataGenerator(rescale=1. / 255,
+                                        samplewise_center=True,  # set each sample mean to 0
+                                        samplewise_std_normalization=True,  # divide each input by its std
+                                        )
+
+    test_generator.fit(x_test)
+    # keras.backend.get_session().run(tf.global_variables_initializer())
+    scores = cutted_model.evaluate_generator(
+        test_generator.flow(x_test, y_test, batch_size=BATCH_SIZE),
+        steps=TEST_SIZE // BATCH_SIZE,
+        verbose=1,
+    )
+
+    print('Test loss:', scores[0])
+    print('Test accuracy:', scores[1])
+    return scores
+
 
 def shallow_network(dir_to_original_model):
     """Metoda wypłycająca sieć, na podstawie pliku 'Skuteczność warstw.txt' """
@@ -175,13 +194,13 @@ def shallow_network(dir_to_original_model):
     # wczytanie sieci
     original_model = load_model(dir_to_original_model)
 
-    # layers_accuracy = []
     accuracy = np.loadtxt('Skutecznosc warstw.txt')
     layers_accuracy = np.zeros((1, 3))
     for i in range(0, int(len(accuracy)/3)-1):
         layers_accuracy = np.append(layers_accuracy, [[accuracy[3*i], accuracy[3*i+1], accuracy[3*i+2]]], axis=0)    # Przekonwertowanie listy
 
     layers_accuracy = np.delete(layers_accuracy, 0, 0)
+
 
     margins = 0.015
     last_effective_layer = 0

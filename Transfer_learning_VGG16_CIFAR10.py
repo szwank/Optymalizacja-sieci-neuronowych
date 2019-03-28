@@ -1,13 +1,14 @@
+import keras
 import tensorflow as tf
-import tensorflow.keras as keras
 from keras.applications.vgg16 import VGG16
 from keras.datasets import cifar10
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation
 from keras.models import Model, model_from_json
 from keras.utils import np_utils
 from keras.optimizers import SGD, Adam
 from keras.layers import Softmax
+from keras.callbacks import ReduceLROnPlateau, CSVLogger, TensorBoard, ModelCheckpoint, EarlyStopping
 import numpy as np
 from keras.utils import plot_model
 import datetime
@@ -73,26 +74,29 @@ y_validation = np_utils.to_categorical(y_validation, NUM_CLASSES)
 y_test = np_utils.to_categorical(y_test, NUM_CLASSES)
 
 # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
-scierzka_zapisu = 'Zapis modelu/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
-scierzka_zapisu_dir = os.path.join(os.getcwd(), scierzka_zapisu)
+save_dir = 'Zapis modelu/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
+scierzka_zapisu_dir = os.path.join(os.getcwd(), save_dir)
 if not os.path.exists(scierzka_zapisu_dir):  # stworzenie folderu jeżeli nie istnieje
     os.makedirs(scierzka_zapisu_dir)
 
 # Ustawienie ścieżki logów i stworzenie folderu jeżeli nie istnieje
-scierzka_logow = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
-scierzka_logow_dir = os.path.join(os.getcwd(), scierzka_logow)
+log_dir = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
+scierzka_logow_dir = os.path.join(os.getcwd(), log_dir)
 if not os.path.exists(scierzka_logow_dir):  # stworzenie folderu jeżeli nie istnieje
     os.makedirs(scierzka_logow_dir)
 
 # Callback
-learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.2, patience=7, verbose=1, mode='auto', cooldown=7, min_lr=0.00001, min_delta=0.01)
-csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
-tensorBoard = keras.callbacks.TensorBoard(log_dir=scierzka_logow)               # Wizualizacja uczenia
-modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
-    filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
-    save_best_only=True, period=5, save_weights_only=False)
-earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=100)  # zatrzymanie uczenia sieci jeżeli
-                                                                                # dokładność się nie zwiększa
+learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.2, patience=7, verbose=1, mode='auto', cooldown=7, min_lr=0.00001, min_delta=0.01)
+csv_logger = CSVLogger('training.log')                          # Tworzenie logów
+tensorBoard = TensorBoard(log_dir=log_dir)               # Wizualizacja uczenia
+modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
+                    filepath=save_dir + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5",
+                    monitor='val_acc',
+                    save_best_only=True,
+                    period=5,
+                    save_weights_only=False)
+earlyStopping = EarlyStopping(monitor='val_loss', patience=100)  # zatrzymanie uczenia sieci jeżeli dokładność się
+                                                                 # nie zwiększa
 
 print('Using real-time data augmentation.')
 # Agmentacja denych w czasie rzeczywistym
@@ -165,4 +169,6 @@ scores = original_network.evaluate_generator(
 
 print('Test loss:', scores[0])
 print('Test accuracy:', scores[1])
+
+
 

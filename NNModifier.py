@@ -53,9 +53,9 @@ class NNModifier:
 
 
     @staticmethod
-    def cut_model_to(model, layer):
+    def cut_model_to(model, cut_after_layer):
         """Metoda zwraca model ucięty do wskazanej warstwy konwolucyjnej."""
-        return Model(model.input, model.layers[layer].output)
+        return Model(model.input, model.layers[cut_after_layer].output)
 
 
     @staticmethod

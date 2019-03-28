@@ -54,7 +54,7 @@ def assesing_conv_layers(dir_to_model, start_from_layer= 1, BATCH_SIZE=256):
 
                 del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
 
-                scores = train_and_asses_network(cutted_model, BATCH_SIZE)
+                scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
 
                 scores.append(i)
                 add_score_to_file(scores)

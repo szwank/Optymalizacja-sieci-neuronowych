@@ -8,6 +8,7 @@ from keras.models import Model, model_from_json, load_model
 from keras.utils import np_utils
 from keras.optimizers import SGD, Adam
 from keras.layers import Softmax
+import keras.backend as K
 import numpy as np
 from keras.utils import plot_model
 import datetime
@@ -17,6 +18,34 @@ from NNLoader import NNLoader
 from CreateNN import CreateNN
 from Create_NN_graph import Create_NN_graph
 from DataGenerator_for_knowledge_distillation import DG_for_kd
+import json
+
+def check_weights_was_changed(old_model, new_model):
+    old_weights = old_model.get_weights()
+    new_weights = new_model.get_weights()
+
+    for i, (old_weight, new_weight) in enumerate(zip(old_weights, new_weights)):
+        if np.array_equal(old_weight, new_weight):
+            print(i, ': takie same')
+        else:
+            print(i, ': inne')
+
+    for i, (l1, l2) in enumerate(zip(old_model.layers, new_model.layers)):
+        print(i, l1.get_config() == l2.get_config())
+
+def reset_weights(model):
+    session = K.get_session()
+    for layer in model.layers:
+        if hasattr(layer, 'kernel_initializer'):
+            layer.kernel.initializer.run(session=session)
+
+def set_weights_as_ones(model):
+    weights = model.get_weights()
+    for i, element in enumerate(weights):
+        dimension = element.shape
+        weights[i] = np.ones(dimension)
+    model.set_weights(weights)
+
 
 def loss_for_knowledge_distillation(y_true, y_pred):
     return y_pred
@@ -27,29 +56,37 @@ def add_score_to_file(score, file='Skutecznosc warstw.txt'):
     accuracy = np.append(accuracy, [score[2], score[0], score[1]])
     np.savetxt(file, accuracy)
 
-def assesing_conv_layers(dir_to_model, start_from_layer= 1, BATCH_SIZE=256):
+def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
-    model = load_model(dir_to_model)
+    model = load_model(path_to_model)
     model.summary()
-    count_conv_layer = 0      # Licznik warstw konwolucyjnych.
-    for i in range(len(model.layers)):
 
-        model = load_model(dir_to_model)  # Wczytanie orginalnego modelu z wagami
-        if type(model.layers[i]) == Conv2D:
+    model_architecture = model.to_json(indent=4)
+    model_architecture = json.loads(model_architecture)
+
+    del(model)
+
+    count_conv_layer = 0      # Licznik warstw konwolucyjnych.
+    number_of_layers_in_model = len(model_architecture["config"]["layers"])
+
+    for i in range(number_of_layers_in_model):
+
+        if model_architecture["config"]["layers"][i]["class_name"] == 'Conv2D':     # Sprawdzenie czy dana warstwa jest konwolucyjna
             count_conv_layer += 1     # Zwiekszenie licznika
 
             if start_from_layer <= i:
                 print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
-                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 2)  # i + 2 ponieważ trzeba uwzględnić
-                # jeszcze warstwę normalizującą i ReLU
+                model = load_model(path_to_model)
+                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i+2)  # i + 2 ponieważ trzeba uwzględnić
+                                                                                # jeszcze warstwę normalizującą i ReLU
 
-                for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw
+                for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
                     layer.trainable = False
 
                 cutted_model = NNModifier.add_classifier_to_end(cutted_model)
 
                 # wczytanie wag do sieci
-                cutted_model.load_weights('Zapis modelu/VGG16-CIFAR10-0.88acc.hdf5', by_name=True)
+                cutted_model.load_weights(path_to_model, by_name=True)
                 cutted_model.summary()
 
                 del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
@@ -66,7 +103,7 @@ def assesing_conv_layers(dir_to_model, start_from_layer= 1, BATCH_SIZE=256):
 
 def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     """Funkcja trenująca i oceniająca skuteczność sieci"""
-    optimizer = SGD(lr=0.001, momentum=0.9, nesterov=True)
+    optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
     # optimizer = Adam(lr=0.1, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
     cutted_model.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
@@ -75,16 +112,15 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
 
     TRAIN_SIZE = len(x_train)
     VALIDATION_SIZE = len(x_validation)
-    TEST_SIZE = len(x_test)
 
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     dir_name = str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") +
                    'warstw_' + str(model_ID) + '_konwolucyjnych')
-    relative_save_model_path = os.path.join('Zapis modelu-uciete/',
+    relative_path_to_save_model = os.path.join('Zapis modelu-uciete/',
                                             datetime.datetime.now().strftime("%y-%m-%d %H-%M"), dir_name)
-    absolute_save_model_path = os.path.join(os.getcwd(), relative_save_model_path)
-    if not os.path.exists(absolute_save_model_path):  # stworzenie folderu jeżeli nie istnieje
-        os.makedirs(absolute_save_model_path)
+    absolute_path_to_save_model = os.path.join(os.getcwd(), relative_path_to_save_model)
+    if not os.path.exists(absolute_path_to_save_model):  # stworzenie folderu jeżeli nie istnieje
+        os.makedirs(absolute_path_to_save_model)
 
     # Ustawienie ścieżki logów i stworzenie folderu jeżeli nie istnieje
     relative_log_path = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + 'warstw_' +
@@ -95,14 +131,14 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
 
     # Callback
     learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
-                                                                 mode='auto', cooldown=5, min_lr=0.00005,
+                                                                 mode='auto', cooldown=5, min_lr=0.0005,
                                                                  min_delta=0.0005)
     csv_logger = keras.callbacks.CSVLogger('training.log')  # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
     modelCheckPoint = keras.callbacks.ModelCheckpoint(  # Zapis sieci podczas uczenia
-        filepath=relative_save_model_path + "weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
+        filepath=relative_path_to_save_model + "weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
         save_best_only=True, period=5, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=35)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=15)  # zatrzymanie uczenia sieci jeżeli
     # dokładność się nie zwiększa
 
     print('Using real-time data augmentation.')
@@ -114,19 +150,19 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         samplewise_std_normalization=True,  # divide each input by its std
         zca_whitening=False,  # apply ZCA whitening
         zca_epsilon=1e-06,  # epsilon for ZCA whitening
-        rotation_range=90,  # randomly rotate images in the range (degrees, 0 to 180)
+        rotation_range=0,  # randomly rotate images in the range (degrees, 0 to 180)
         # randomly shift images horizontally (fraction of total width)
-        width_shift_range=0.1,
+        width_shift_range=4,
         # randomly shift images vertically (fraction of total height)
-        height_shift_range=0.1,
+        height_shift_range=4,
         # shear_range=0.1,  # set range for random shear. Pochylenie zdjęcia w kierunku przeciwnym do wskazówek zegara
-        zoom_range=0.1,  # set range for random zoom
-        channel_shift_range=0.1,  # set range for random channel shifts
+        # zoom_range=0.1,  # set range for random zoom
+        channel_shift_range=0,  # set range for random channel shifts
         # set mode for filling points outside the input boundaries
         fill_mode='nearest',
         cval=0.,  # value used for fill_mode = "constant"
         horizontal_flip=True,  # randomly flip images
-        vertical_flip=True,  # randomly flip images
+        vertical_flip=False,  # randomly flip images
         # set rescaling factor (applied before any other transformation)
         rescale=1. / 255,  # Przeskalowanie wejścia
         # set function that will be applied on each input
@@ -146,7 +182,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
                                      )
     val_datagen.fit(x_validation)
 
-    keras.backend.get_session().run(tf.global_variables_initializer())
+
     cutted_model.fit_generator(
         datagen.flow(x_train, y_train, batch_size=BATCH_SIZE),  # Podawanie danych uczących
         verbose=1,
@@ -161,52 +197,61 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         # initial_epoch=1       # Wskazanie od której epoki rozpocząć uczenie
         # max_queue_size=2
     )
+    keras.backend.clear_session()
+    cutted_model = NNLoader.load_best_weights_from_dir(absolute_path_to_save_model)
 
     test_generator = ImageDataGenerator(rescale=1. / 255,
                                         samplewise_center=True,  # set each sample mean to 0
                                         samplewise_std_normalization=True,  # divide each input by its std
                                         )
 
-    test_generator.fit(x_test)
+    test_generator.fit(x_validation)
     # keras.backend.get_session().run(tf.global_variables_initializer())
     scores = cutted_model.evaluate_generator(
-        test_generator.flow(x_test, y_test, batch_size=BATCH_SIZE),
-        steps=TEST_SIZE // BATCH_SIZE,
+        test_generator.flow(x_validation, y_validation, batch_size=BATCH_SIZE),
+        steps=VALIDATION_SIZE // BATCH_SIZE,
         verbose=1,
     )
 
-    print('Test loss:', scores[0])
-    print('Test accuracy:', scores[1])
+    print('Validation loss:', scores[0])
+    print('Validation accuracy:', scores[1])
     return scores
 
 
-def shallow_network(dir_to_original_model):
-    """Metoda wypłycająca sieć, na podstawie pliku 'Skuteczność warstw.txt' """
+def shallow_network(path_to_original_model, path_to_assessing_data='Skutecznosc warstw.txt'):
+    """Metoda wypłycająca sieć, na podstawie pliku tekstowego path_to_assessing_data"""
+
     print('Wypłycanie sieci')
 
-    inputs = Input(shape=(32, 32, 3))
-    x = Flatten()(inputs)
-    x = Dense(10)(x)
-    x = Softmax()(x)
-    shallowed_model = Model(inputs=inputs, outputs=x)
-    shallowed_model.summary()
-
     # wczytanie sieci
-    original_model = load_model(dir_to_original_model)
+    original_model = load_model(path_to_original_model)
 
-    accuracy = np.loadtxt('Skutecznosc warstw.txt')
+    accuracy = np.loadtxt(path_to_assessing_data)
     layers_accuracy = np.zeros((1, 3))
-    for i in range(0, int(len(accuracy)/3)-1):
-        layers_accuracy = np.append(layers_accuracy, [[accuracy[3*i], accuracy[3*i+1], accuracy[3*i+2]]], axis=0)    # Przekonwertowanie listy
+    for i in range(0, int(len(accuracy)/3)-1):      # Przekonwertowanie listy(numer warstwy, val_loss, val_acc)
+        layers_accuracy = np.append(layers_accuracy, [[accuracy[3*i], accuracy[3*i+1], accuracy[3*i+2]]], axis=0)
 
     layers_accuracy = np.delete(layers_accuracy, 0, 0)
 
+    layers_accuracy_dict = {}
 
-    margins = 0.015
+    for layer_accuracy in layers_accuracy:
+        layer = layer_accuracy[0]
+        accuracy = layer_accuracy[2]
+        loss = layer_accuracy[1]
+
+        if layer in layers_accuracy_dict:
+            if accuracy > layers_accuracy_dict[layer]['accuracy']:
+                layers_accuracy_dict[layer]['accuracy'] = accuracy
+        else:
+            layers_accuracy_dict[layer] = {'accuracy': accuracy, 'loss': loss}
+
+
+    margins = 0.015  # 1.5% dokładności
     last_effective_layer = 0
     layers_to_remove = []
-    for i in range(2, len(layers_accuracy)-1):                                      # Znalezienie warstw do usunięcia
-        difference = layers_accuracy[i-1][2] - layers_accuracy[last_effective_layer][2]
+    for i in range(2, len(layers_accuracy_dict)-1):                                      # Znalezienie warstw do usunięcia
+        difference = layers_accuracy_dict[i-1][2] - layers_accuracy_dict[last_effective_layer][2]
 
         if difference < margins:
             layers_to_remove.append(i)
@@ -246,13 +291,13 @@ def knowledge_distillation(shallowed_model):
         os.makedirs(scierzka_logow_dir)
 
     # Callback
-    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.000005)
-    csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
+    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
+    # csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
     modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='loss', patience=75)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=20)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
 
@@ -272,10 +317,10 @@ def knowledge_distillation(shallowed_model):
                                dir_to_weights='Zapis modelu/19-03-03 19-24/weights-improvement-238-0.88.hdf5', **params)
 
     shallowed_model.fit_generator(generator=training_gen,
-                                  use_multiprocessing=False,
+                                  use_multiprocessing=True,
                                   workers=10,
                                   epochs=1000,
-                                  callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
+                                  callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
                                   initial_epoch=41
                                   )
     # shallowed_model.save('Zapis modelu/shallowed_model.h5')
@@ -320,7 +365,7 @@ def knowledge_distillation(shallowed_model):
 
 if __name__ == '__main__':
 
-    assesing_conv_layers(dir_to_model='Zapis modelu/VGG16-CIFAR10-0.88acc.hdf5')
-    shallowed_model = shallow_network('Zapis modelu/VGG16-CIFAR10-0.88acc.hdf5')
+    # assesing_conv_layers(path_to_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5', start_from_layer=10)
+    shallowed_model = shallow_network('Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
     knowledge_distillation(shallowed_model)
 

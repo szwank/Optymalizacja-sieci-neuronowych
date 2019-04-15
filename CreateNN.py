@@ -8,69 +8,66 @@ class CreateNN:
     def create_VGG16_for_CIFAR10(weight_decay=0.0001):
         inputs = Input(shape=(32, 32, 3))
 
-        x = Conv2D(64, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(inputs)
+        x = Conv2D(64, (3, 3), padding='same')(inputs)
+        x = ReLU()(x)
+        x = BatchNormalization()(x)
+        x = Conv2D(64, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
-        x = Conv2D(64, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
-        x = BatchNormalization()(x)
-        x = ReLU()(x)
+
         x = MaxPool2D(pool_size=(2, 2))(x)
 
         # x = Dropout(0.4)(x)
 
-        x = Conv2D(128, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Conv2D(128, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
-        x = Conv2D(128, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Conv2D(128, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
+
         x = MaxPool2D(pool_size=(2, 2))(x)
 
-        # x = Dropout(0.5)(x)
+        x = Conv2D(256, (3, 3), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+        x = Conv2D(256, (3, 3), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+        x = Conv2D(256, (3, 3), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
 
-        x = Conv2D(256, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
-        x = BatchNormalization()(x)
-        x = ReLU()(x)
-        x = Conv2D(256, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
-        x = BatchNormalization()(x)
-        x = ReLU()(x)
-        x = Conv2D(256, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
-        x = BatchNormalization()(x)
-        x = ReLU()(x)
         x = MaxPool2D(pool_size=(2, 2))(x)
 
-        # x = Dropout(0.6)(x)
 
-        x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Conv2D(512, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
-        x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Conv2D(512, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
-        x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Conv2D(512, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
+
         x = MaxPool2D(pool_size=(2, 2))(x)
 
-        # x = Dropout(0.7)(x)
-
-        x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Conv2D(512, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
-        x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Conv2D(512, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
-        x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Conv2D(512, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
-
-        # x = Dropout(0.2)(x)
 
         x = Flatten()(x)
-        x = Dense(512)(x)
+
+        x = Dense(10)(x)
         x = BatchNormalization()(x)
-        x = ReLU()(x)
-        x = Dense(10, activation='softmax', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = Softmax()(x)
 
         model = Model(inputs=inputs, outputs=x)
         return model
@@ -137,7 +134,7 @@ class CreateNN:
         return model
 
     @staticmethod
-    def loss_for_knowledge_distillation(args, alpha=0.1, T=100):
+    def loss_for_knowledge_distillation(args, alpha=0.1, T=1):
         """Sztuczka! Zamiana obliczania lossu sieci neurnonowej w ostatniej warstwie
 
         # Argumenty

@@ -10,6 +10,7 @@ from Create_NN_graph import Create_NN_graph
 from NNSaver import NNSaver
 import json
 import os
+import keras.backend as K
 
 
 class NNModifier:
@@ -53,22 +54,54 @@ class NNModifier:
 
 
     @staticmethod
-    def cut_model_to(model, cut_after_layer):
+    def cut_model_to(model, cut_after_layer, leave_layers=[]):
         """Metoda zwraca model ucięty do wskazanej warstwy konwolucyjnej."""
-        return Model(model.input, model.layers[cut_after_layer].output)
+        if not leave_layers:        # sprawdzenie czy lista leave_layers jest pusta
+            return Model(model.input, model.layers[cut_after_layer].output)
+        else:
+            json_model = model.to_json(indent=4)  # Przekonwertowanie modelu na słownik
+            json_object = json.loads(json_model)
+            removed_layers = 0
+            layers_to_remove = []
 
+            for i, layer in enumerate(json_object["config"]["layers"]):  # Iteracja po warstwach w modelu
+                if i > cut_after_layer:
+                    if not layer["class_name"] in leave_layers:  # Sprawdzenie czy warstwa jest konwolucyjna
+                        layers_to_remove.append(i)
+                            # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
+                            # json_object = NNModifier.remove_chosen_layer_from_json_string(json_object, i-removed_layers)
+                            # removed_layers += 1
+
+            for layer in layers_to_remove:
+                # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
+                json_object = NNModifier.remove_chosen_layer_from_json_string(json_object, layer-removed_layers)
+                removed_layers += 1
+
+            json_model = json.dumps(json_object)  # przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
+            model = model_from_json(json_model)
+            return model
 
     @staticmethod
     def add_classifier_to_end(model, number_of_neurons=512, number_of_classes=10, weight_decay=0.0001):
 
         y = model.output
-        y = Flatten()(y)
-        y = Dense(number_of_neurons, name='Added_classifier_1')(y)
-        y = BatchNormalization(name='Added_normalization_layer')(y)
-        y = ReLU(name='Added_ReLU')(y)
-        y = Dense(number_of_classes, name='Added_classifier_2', kernel_regularizer=regularizers.l2(weight_decay))(y)
-        y = Softmax(name='Added_Softmax')(y)
 
+        # y = keras.layers.SpatialDropout2D(0.7)(y)
+
+        # y = Conv2D(512, (3, 3), padding='same', name='dodane')(y)
+        y = Lambda(lambda x: K.stop_gradient(x))(y)
+        y = Flatten()(y)
+
+        # y = Dropout(0.9)(y)
+        # y = Dense(number_of_neurons, name='Added_classifier_1', kernel_regularizer=regularizers.l2(, kernel_regularizer=regularizers.l2(weight_decay))(y)
+        #         y = BatchNormalization(name='Added_normalization_layer')(y)weight_decay))(y)
+        # y = BatchNormalization(name='Added_normalization_layer')(y)
+        # y = ReLU(name='Added_ReLU')(y)
+        y = Dense(number_of_classes, name='Added_classifier_2')(y)
+        y = BatchNormalization(name='Added_normalization_layer')(y)
+        y = Softmax(name='Added_Softmax')(y)
+        # y = Dense(number_of_classes, name='Added_classifier', kernel_regularizer=regularizers.l2(weight_decay))(y)
+        # y = Softmax(name='Added_Softmax')(y)
         return Model(model.input, y)
 
 
@@ -175,9 +208,14 @@ class NNModifier:
 
         print('deleting', json_object["config"]["layers"][layer_number]["name"])  # wypisanie nazwy usuwanej warstwy
 
+        layer_name = json_object["config"]["layers"][layer_number - 1][
+            "name"]  # Poranie nazwy warstwy porzedającej usuwaną
 
-        layer_name = json_object["config"]["layers"][layer_number - 1]["name"]  # Poranie nazwy warstwy porzedającej usuwaną
-        json_object["config"]["layers"][layer_number + 1]["inbound_nodes"][0][0][0] = layer_name    # Podmiana połączenia w modelu
+        if layer_number < len(json_object["config"]["layers"]) - 1:
+            json_object["config"]["layers"][layer_number + 1]["inbound_nodes"][0][0][0] = layer_name    # Podmiana połączenia w modelu
+        else:
+            json_object["config"]["output_layers"][0][0] = layer_name
+
         del json_object["config"]["layers"][layer_number]   # Usunięcia właściwej warstwy ze słownika
 
         return json_object

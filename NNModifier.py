@@ -85,23 +85,11 @@ class NNModifier:
     def add_classifier_to_end(model, number_of_neurons=512, number_of_classes=10, weight_decay=0.0001):
 
         y = model.output
-
-        # y = keras.layers.SpatialDropout2D(0.7)(y)
-
-        # y = Conv2D(512, (3, 3), padding='same', name='dodane')(y)
         y = Lambda(lambda x: K.stop_gradient(x))(y)
         y = Flatten()(y)
-
-        # y = Dropout(0.9)(y)
-        # y = Dense(number_of_neurons, name='Added_classifier_1', kernel_regularizer=regularizers.l2(, kernel_regularizer=regularizers.l2(weight_decay))(y)
-        #         y = BatchNormalization(name='Added_normalization_layer')(y)weight_decay))(y)
-        # y = BatchNormalization(name='Added_normalization_layer')(y)
-        # y = ReLU(name='Added_ReLU')(y)
         y = Dense(number_of_classes, name='Added_classifier_2')(y)
         y = BatchNormalization(name='Added_normalization_layer')(y)
         y = Softmax(name='Added_Softmax')(y)
-        # y = Dense(number_of_classes, name='Added_classifier', kernel_regularizer=regularizers.l2(weight_decay))(y)
-        # y = Softmax(name='Added_Softmax')(y)
         return Model(model.input, y)
 
 

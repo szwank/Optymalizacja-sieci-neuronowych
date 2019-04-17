@@ -134,7 +134,7 @@ class CreateNN:
         return model
 
     @staticmethod
-    def loss_for_knowledge_distillation(args, alpha=0.1, T=1):
+    def loss_for_knowledge_distillation_layer(args, alpha=0.1, T=1):
         """Sztuczka! Zamiana obliczania lossu sieci neurnonowej w ostatniej warstwie
 
         # Argumenty
@@ -153,4 +153,11 @@ class CreateNN:
         second_part = - alpha * K.sum(p * K.log(q + K.epsilon()), axis=1, keepdims=True)
 
         return first_part + second_part
+
+    @staticmethod
+    def soft_softmax_layer(args, T=100):
+        return K.exp(args) / K.sum(K.exp(args/T + K.epsilon()), axis=1, keepdims=True)
+
+
+
 

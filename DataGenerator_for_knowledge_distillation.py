@@ -3,7 +3,9 @@ import h5py
 import os
 import sys
 from keras.models import Model, load_model
+from keras.layers import Lambda
 from DataGenerator import DataGenerator
+from CreateNN import CreateNN
 from Create_NN_graph import Create_NN_graph
 
 
@@ -94,6 +96,7 @@ class DG_for_kd(DataGenerator):
 
     def convert_original_neural_network(self, model):
         Create_NN_graph.create_NN_graph(Model(inputs=model.inputs, outputs=(model.layers[-1].output, model.layers[-2].output)), name='generator_model')
-        return Model(inputs=model.inputs, outputs=(model.layers[-1].output, model.layers[-2].output))
+        output = Lambda(CreateNN.soft_softmax_layer)(model.layers[-2].output)
+        return Model(inputs=model.inputs, outputs=(output, model.layers[-2].output))
 
 

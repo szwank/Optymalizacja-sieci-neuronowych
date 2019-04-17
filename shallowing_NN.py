@@ -234,45 +234,28 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     return scores
 
 
-def shallow_network(path_to_original_model, path_to_assessing_data='Skutecznosc warstw.txt'):
-    """Metoda wypłycająca sieć, na podstawie pliku tekstowego path_to_assessing_data"""
+def shallow_network(path_to_original_model, path_to_assessing_data='Skutecznosc warstw.json'):
+    """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
 
     print('Wypłycanie sieci')
 
-    # wczytanie sieci
-    original_model = load_model(path_to_original_model)
-
-    accuracy = np.loadtxt(path_to_assessing_data)
-    layers_accuracy = np.zeros((1, 3))
-    for i in range(0, int(len(accuracy)/3)-1):      # Przekonwertowanie listy(numer warstwy, val_loss, val_acc)
-        layers_accuracy = np.append(layers_accuracy, [[accuracy[3*i], accuracy[3*i+1], accuracy[3*i+2]]], axis=0)
-
-    layers_accuracy = np.delete(layers_accuracy, 0, 0)
-
-    layers_accuracy_dict = {}
-
-    for layer_accuracy in layers_accuracy:
-        layer = layer_accuracy[0]
-        accuracy = layer_accuracy[2]
-        loss = layer_accuracy[1]
-
-        if layer in layers_accuracy_dict:
-            if accuracy > layers_accuracy_dict[layer]['accuracy']:
-                layers_accuracy_dict[layer]['accuracy'] = accuracy
-        else:
-            layers_accuracy_dict[layer] = {'accuracy': accuracy, 'loss': loss}
-
+    # wczytanie danych
+    file = open(path_to_assessing_data, "r")
+    json_string = file.read()
+    layers_accuracy_dict = json.loads(json_string)
 
     margins = 0.015  # 1.5% dokładności
-    last_effective_layer = 0
+    last_effective_layer = 1
     layers_to_remove = []
-    for i in range(2, len(layers_accuracy_dict)-1):                                      # Znalezienie warstw do usunięcia
-        difference = layers_accuracy_dict[i-1][2] - layers_accuracy_dict[last_effective_layer][2]
+    for i in range(2, len(layers_accuracy_dict)+1):           # Znalezienie warstw do usunięcia
+        present_layer = str(i)
+        accuracy_diference = layers_accuracy_dict[present_layer]['accuracy'] -\
+                             layers_accuracy_dict[str(last_effective_layer)]['accuracy']
 
-        if difference < margins:
+        if accuracy_diference < margins:
             layers_to_remove.append(i)
         else:
-            last_effective_layer = i - 1
+            last_effective_layer = i + 1
 
     print('The following convolutional layers and their dependencies(ReLU, batch normalization)will be removed:',
           layers_to_remove, '\n')
@@ -280,6 +263,8 @@ def shallow_network(path_to_original_model, path_to_assessing_data='Skutecznosc 
     # shallowed_model = load_model('Zapis modelu/19-03-11 20-21/weights-improvement-265-22.78.hdf5',
     #                              custom_objects={'loss_for_knowledge_distillation': loss_for_knowledge_distillation})
 
+    # wczytanie sieci
+    original_model = load_model(path_to_original_model)
     shallowed_model = NNModifier.remove_chosen_conv_layers(original_model, layers_to_remove)
     return shallowed_model
 

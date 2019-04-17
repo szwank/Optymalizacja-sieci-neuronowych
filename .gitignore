@@ -14,4 +14,8 @@ data/**
 *.hdf5
 *.log
 new_model.png
+training.log
+Skutecznosc warstw.*
+test.py
+testy1.py
 

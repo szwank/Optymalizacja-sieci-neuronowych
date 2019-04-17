@@ -50,11 +50,27 @@ def set_weights_as_ones(model):
 def loss_for_knowledge_distillation(y_true, y_pred):
     return y_pred
 
-def add_score_to_file(score, file='Skutecznosc warstw.txt'):
-    """Dopisanie wyniku klasyfikatora do pliku tekstowego"""
-    accuracy = np.loadtxt(file)
-    accuracy = np.append(accuracy, [score[2], score[0], score[1]])
-    np.savetxt(file, accuracy)
+def add_score_to_file(score, file_name='Skutecznosc warstw.json'):
+    """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
+
+    conv_layer_number = score[2]
+    loss = score[0]
+    accuracy = score[1]
+
+    if os.path.exists(file_name):
+        file = open(file_name, "r")
+        json_string = file.read()
+        dictionary = json.loads(json_string)
+        subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
+        dictionary.update(subordinate_dictionary)
+        file.close()
+    else:
+        dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
+
+    file = open(file_name, "w")
+    json_string = json.dumps(dictionary)
+    file.write(json_string)
+    file.close()
 
 def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
@@ -93,7 +109,7 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
 
                 scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
 
-                scores.append(i)
+                scores.append(count_conv_layer)
                 add_score_to_file(scores)
 
                 # tf.reset_default_graph()

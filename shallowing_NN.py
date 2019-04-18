@@ -74,6 +74,9 @@ def add_score_to_file(score, file_name='Skutecznosc warstw.json'):
 
 def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
+
+    print('Testowanie warstw konwolucyjnych')
+
     model = load_model(path_to_model)
     model.summary()
 
@@ -132,8 +135,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     dir_name = str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") +
                    'warstw_' + str(model_ID) + '_konwolucyjnych')
-    relative_path_to_save_model = os.path.join('Zapis modelu-uciete/',
-                                            datetime.datetime.now().strftime("%y-%m-%d %H-%M"), dir_name)
+    relative_path_to_save_model = os.path.join('Zapis modelu-uciete/', dir_name)
     absolute_path_to_save_model = os.path.join(os.getcwd(), relative_path_to_save_model)
     if not os.path.exists(absolute_path_to_save_model):  # stworzenie folderu jeżeli nie istnieje
         os.makedirs(absolute_path_to_save_model)
@@ -149,10 +151,10 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     # learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
     #                                                              mode='auto', cooldown=5, min_lr=0.0005,
     #                                                              min_delta=0.0005)
-    csv_logger = keras.callbacks.CSVLogger('training.log')  # Tworzenie logów
+    # csv_logger = keras.callbacks.CSVLogger('training.log')  # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
     modelCheckPoint = keras.callbacks.ModelCheckpoint(  # Zapis sieci podczas uczenia
-        filepath=relative_path_to_save_model + "weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
+        filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
         save_best_only=True, period=5, save_weights_only=False)
     earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=15)  # zatrzymanie uczenia sieci jeżeli
     # dokładność się nie zwiększa
@@ -204,7 +206,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         verbose=1,
         steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
         epochs=1000,  # ilość epok treningu
-        callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping],
+        callbacks=[tensorBoard, modelCheckPoint, earlyStopping],
         validation_steps=VALIDATION_SIZE // BATCH_SIZE,
         workers=10,
         validation_data=val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE),

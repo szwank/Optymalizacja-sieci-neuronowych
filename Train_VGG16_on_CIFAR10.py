@@ -68,7 +68,7 @@ def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
     modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=save_model_relative_path + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_loss',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=75)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=15)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
     
     print('Using real-time data augmentation.')
@@ -133,17 +133,15 @@ def asses_model_on_CIFAR10(model, BATCH_SIZE=128):
     [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
     TEST_SIZE = len(x_test)
 
-    test_generator = ImageDataGenerator(rescale=1. / 255,
+    val_generator = ImageDataGenerator(rescale=1. / 255,
                                         samplewise_center=True,  # set each sample mean to 0
                                         samplewise_std_normalization=True,  # divide each input by its std
                                         )
 
-
-
     scores = model.evaluate_generator(
-            test_generator.flow(x_test, y_test, batch_size=BATCH_SIZE),
+            val_generator.flow(x_test, y_test, batch_size=BATCH_SIZE),
             steps=TEST_SIZE // BATCH_SIZE,
-            verbose=15,
+            verbose=1,
             )
     
     print('Test loss:', scores[0])
@@ -151,7 +149,7 @@ def asses_model_on_CIFAR10(model, BATCH_SIZE=128):
 
 
 if __name__ == '__main__':
-    model = tran_VGG16_on_CIFAR10
+    model = tran_VGG16_on_CIFAR10()
     asses_model_on_CIFAR10(model)
 
     

@@ -146,9 +146,9 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         os.makedirs(absolute_log_path)
 
     # Callback
-    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
-                                                                 mode='auto', cooldown=5, min_lr=0.0005,
-                                                                 min_delta=0.0005)
+    # learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
+    #                                                              mode='auto', cooldown=5, min_lr=0.0005,
+    #                                                              min_delta=0.0005)
     csv_logger = keras.callbacks.CSVLogger('training.log')  # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
     modelCheckPoint = keras.callbacks.ModelCheckpoint(  # Zapis sieci podczas uczenia
@@ -204,7 +204,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         verbose=1,
         steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
         epochs=1000,  # ilość epok treningu
-        callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
+        callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping],
         validation_steps=VALIDATION_SIZE // BATCH_SIZE,
         workers=10,
         validation_data=val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE),
@@ -213,8 +213,9 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         # initial_epoch=1       # Wskazanie od której epoki rozpocząć uczenie
         # max_queue_size=2
     )
+
     keras.backend.clear_session()
-    cutted_model = NNLoader.load_best_weights_from_dir(absolute_path_to_save_model)
+    cutted_model = NNLoader.load_best_model_from_dir(absolute_path_to_save_model)
 
     test_generator = ImageDataGenerator(rescale=1. / 255,
                                         samplewise_center=True,  # set each sample mean to 0
@@ -231,6 +232,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
 
     print('Validation loss:', scores[0])
     print('Validation accuracy:', scores[1])
+    keras.backend.clear_session()
     return scores
 
 
@@ -273,7 +275,7 @@ def knowledge_distillation(shallowed_model):
     """Metoda Dokonująca transferu danych"""
 
     print('Knowledge distillation')
-    # shallowed_model = NNModifier.add_loss_layer_for_knowledge_distillation(shallowed_model, num_classes=10)
+    shallowed_model = NNModifier.add_loss_layer_for_knowledge_distillation(shallowed_model, num_classes=10)
     optimizer = keras.optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer, loss=loss_for_knowledge_distillation)
     # original_model.compile(SGD, loss='categorical_crossentropy', metrics=['accuracy'])
@@ -309,9 +311,6 @@ def knowledge_distillation(shallowed_model):
               'shuffle': True,
               'inputs_number': 3}
 
-    # training_gen = DataGenerator(x_data_name='x_train', y_data_name='y_train', data_dir='data/CIFAR10.h5', **params)
-    # validation_gen = DataGenerator(x_data_name='x_validation', y_data_name='y_validation', data_dir='data/CIFAR10.h5', **params)
-
     training_gen = DG_for_kd(x_data_name='x_train', data_dir='data/CIFAR10.h5',
                              dir_to_weights='Zapis modelu/19-03-03 19-24/weights-improvement-238-0.88.hdf5', **params)
     validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
@@ -322,7 +321,7 @@ def knowledge_distillation(shallowed_model):
                                   workers=10,
                                   epochs=1000,
                                   callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
-                                  initial_epoch=41
+                                  initial_epoch=0
                                   )
     # shallowed_model.save('Zapis modelu/shallowed_model.h5')
 

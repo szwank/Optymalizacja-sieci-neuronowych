@@ -173,9 +173,9 @@ class NNModifier:
         logits = Input(shape=(10, ), name='logits')  # Dodatkowe wejście na wyjścia z orginalnej sieci(warstwa przed SoftMax)
 
         # Warstwa obliczająca loss dla procesu knowledge distillation
-        loss = Lambda(CreateNN.loss_for_knowledge_distillation, name='loss')([ground_truth, logits,
-                                                                                model.layers[-1].output,
-                                                                                model.layers[-2].output])
+        loss = Lambda(CreateNN.loss_for_knowledge_distillation_layer, name='loss')([ground_truth, logits,
+                                                                                    model.layers[-1].output,
+                                                                                    model.layers[-2].output])
         # label = Softmax(name='test')(model.layers[-2].output)
 
         model = Model(inputs=(ground_truth, logits, model.input),  outputs=loss)  # dodanie warstwy do modelu
@@ -240,6 +240,12 @@ class NNModifier:
     @staticmethod
     def remove_loos_layer(model):
         return Model(inputs=model.input[(2)], outputs=model.layers[-2].output)
+
+    @staticmethod
+    def replace_softmax_layer_with_soft_softmax_layer(model, Temperature=100):
+        output = Lambda(CreateNN.soft_softmax_layer)(model.layers[-1])
+        return Model(inputs=model.inputs, outputs=output)
+
 
 
 

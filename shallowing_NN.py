@@ -4,7 +4,7 @@ from keras.applications.vgg16 import VGG16
 from keras.datasets import cifar10
 from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation
-from keras.models import Model, model_from_json, load_model
+from keras.models import Model, model_from_json, load_model, save_model
 from keras.utils import np_utils
 from keras.optimizers import SGD, Adam
 from keras.layers import Softmax
@@ -156,7 +156,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     modelCheckPoint = keras.callbacks.ModelCheckpoint(  # Zapis sieci podczas uczenia
         filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
         save_best_only=True, period=5, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=15)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
     # dokładność się nie zwiększa
 
     print('Using real-time data augmentation.')
@@ -273,14 +273,11 @@ def shallow_network(path_to_original_model, path_to_assessing_data='Skutecznosc 
     return shallowed_model
 
 
-def knowledge_distillation(shallowed_model):
+def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     """Metoda Dokonująca transferu danych"""
 
     print('Knowledge distillation')
-    shallowed_model = NNModifier.add_loss_layer_for_knowledge_distillation(shallowed_model, num_classes=10)
-    optimizer = keras.optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
-    shallowed_model.compile(optimizer=optimizer, loss=loss_for_knowledge_distillation)
-    # original_model.compile(SGD, loss='categorical_crossentropy', metrics=['accuracy'])
+
 
 
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
@@ -296,13 +293,13 @@ def knowledge_distillation(shallowed_model):
         os.makedirs(scierzka_logow_dir)
 
     # Callback
-    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
+    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
     # csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
     modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=20)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = keras.callbacks.EarlyStopping(monitor='loss', patience=20)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
 
@@ -314,21 +311,30 @@ def knowledge_distillation(shallowed_model):
               'inputs_number': 3}
 
     training_gen = DG_for_kd(x_data_name='x_train', data_dir='data/CIFAR10.h5',
-                             dir_to_weights='Zapis modelu/19-03-03 19-24/weights-improvement-238-0.88.hdf5', **params)
-    validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
-                               dir_to_weights='Zapis modelu/19-03-03 19-24/weights-improvement-238-0.88.hdf5', **params)
+                             dir_to_weights=dir_to_original_model, **params)
+    # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
+    #                            dir_to_weights=dir_to_original_model, **params)
 
-    shallowed_model.fit_generator(generator=training_gen,
+    keras.backend.clear_session()
+    shallowed_model = load_model(path_to_shallowed_model)
+    shallowed_model = NNModifier.add_loss_layer_for_knowledge_distillation(shallowed_model, num_classes=10)
+    optimizer_SGD = keras.optimizers.SGD(lr=0.1, momentum=0.9, nesterov=True)
+    shallowed_model.compile(optimizer=optimizer_SGD, loss=loss_for_knowledge_distillation)
+
+    shallowed_model.fit_generator(generator=
+                                  training_gen,
                                   use_multiprocessing=True,
                                   workers=10,
-                                  epochs=1000,
+                                  epochs=10,
                                   callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
                                   initial_epoch=0
                                   )
     # shallowed_model.save('Zapis modelu/shallowed_model.h5')
 
-    shallowed_model = NNModifier.remove_loos_layer(shallowed_model)
-    shallowed_model.compile(optimizer=SGD, loss='categorical_crossentropy', metrics=['accuracy'])
+
+    # original_model.compile(SGD, loss='categorical_crossentropy', metrics=['accuracy'])
+    shallowed_model = NNModifier.remove_last_layer(shallowed_model)  # Removing loos layer
+    shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=['accuracy'])
     Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
 
     [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
@@ -368,6 +374,12 @@ def knowledge_distillation(shallowed_model):
 if __name__ == '__main__':
 
     # assesing_conv_layers(path_to_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5', start_from_layer=10)
-    shallowed_model = shallow_network('Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
-    knowledge_distillation(shallowed_model)
+    shallowed_model = shallow_network(path_to_original_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
+
+    path_to_shallowed_model = 'temp/model.hdf5'
+    save_model(shallowed_model, filepath=path_to_shallowed_model)
+    keras.backend.clear_session()
+
+    knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
+                           dir_to_original_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
 

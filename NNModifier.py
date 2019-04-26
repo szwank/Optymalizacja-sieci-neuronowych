@@ -141,16 +141,7 @@ class NNModifier:
 
     @staticmethod
     def remove_last_layer(model):
-        # Rozbicie sieci na warstwy
-        layers = [l for l in model.layers]
-
-        input = layers[0].output
-        x = input
-
-        for i in range(1, len(layers)-1):
-            x = layers[i](x)  # Łączenie warstw sieci neuronowej
-
-        return Model(model.input, x)
+        return Model(inputs=model.inputs, outputs=model.layers[-2].output)
 
 
     @staticmethod
@@ -236,10 +227,6 @@ class NNModifier:
         print('Block deleted\n')
 
         return json_object
-
-    @staticmethod
-    def remove_loos_layer(model):
-        return Model(inputs=model.input[(2)], outputs=model.layers[-2].output)
 
     @staticmethod
     def replace_softmax_layer_with_soft_softmax_layer(model, Temperature=100):

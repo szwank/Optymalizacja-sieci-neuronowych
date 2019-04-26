@@ -42,7 +42,6 @@ class NNLoader:
         y_test = np_utils.to_categorical(y_test, NUM_CLASSES)
 
 
-
         return [x_train, x_validation, x_test], [y_train, y_validation, y_test]
 
     @staticmethod

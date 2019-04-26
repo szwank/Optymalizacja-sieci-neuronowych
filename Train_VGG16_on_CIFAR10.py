@@ -68,8 +68,8 @@ def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
     modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=save_model_relative_path + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_loss',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=15)  # zatrzymanie uczenia sieci jeżeli
-                                                                                    # dokładność się nie zwiększa
+    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
+                                                                                                               # dokładność się nie zwiększa
     
     print('Using real-time data augmentation.')
     # Agmentacja denych w czasie rzeczywistym

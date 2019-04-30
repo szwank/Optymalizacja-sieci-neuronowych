@@ -1,5 +1,4 @@
 from NNLoader import NNLoader
-import numpy as np
 import h5py
 
 [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
@@ -14,7 +13,4 @@ h5f.create_dataset('y_test', data=y_test)
 
 
 h5f.close()
-# partition = dict(train=x_train, validation=x_validation, test=x_test)
 
-
-a=1

@@ -3,7 +3,7 @@ import keras
 from keras.applications.vgg16 import VGG16
 from keras.datasets import cifar10
 from keras.preprocessing.image import ImageDataGenerator
-from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation
+from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Lambda
 from keras.models import Model, model_from_json, load_model, save_model
 from keras.utils import np_utils
 from keras.optimizers import SGD, Adam
@@ -56,7 +56,7 @@ def loss_of_ground_truth(y_true, y_pred):
 def loss_of_logits(y_true, y_pred):
 
     alpha = 0.15
-    T = 5
+    T = 1
 
     q_denominator = K.exp((y_pred - K.max(y_pred, axis=1, keepdims=True)) / T)
     q_devider = K.sum(q_denominator, axis=1, keepdims=True)
@@ -321,7 +321,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
                                                                                     # dokładność się nie zwiększa
 
     params = {'dim': (32, 32, 3),
-              'batch_size': 128,
+              'batch_size': 256,
               'number_of_classes': 10,
               'shuffle': True,
               'inputs_number': 3}
@@ -334,17 +334,19 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     keras.backend.clear_session()
 
     shallowed_model = load_model(path_to_shallowed_model)
-    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=[shallowed_model.layers[-1].output,
+    output = Lambda(CreateNN.soft_softmax_layer(T=10))(shallowed_model.layers[-2].output)
+    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=[output,
                                                                     shallowed_model.layers[-2].output])
-
-    optimizer_SGD = keras.optimizers.SGD(lr=0.1, momentum=0.9, nesterov=True)
+    # shallowed_model.load_weights('Zapis modelu/19-04-30 12-53/weights-improvement-98-2.35.hdf5')
+    # shallowed_model.load_weights(dir_to_original_model, by_name=True)
+    optimizer_SGD = keras.optimizers.SGD(lr=0.01, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD, loss=[loss_of_ground_truth, loss_of_logits])
 
     shallowed_model.fit_generator(generator=
                                   training_gen,
-                                  use_multiprocessing=True,
+                                  use_multiprocessing=False,
                                   workers=10,
-                                  epochs=100,
+                                  epochs=1000,
                                   callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
                                   initial_epoch=0
                                   )
@@ -352,7 +354,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
 
     # original_model.compile(SGD, loss='categorical_crossentropy', metrics=['accuracy'])
-    shallowed_model = NNModifier.remove_loos_layer(shallowed_model)  # Removing loos layer
+    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=shallowed_model.outputs[0])
     shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=['accuracy'])
     Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
 

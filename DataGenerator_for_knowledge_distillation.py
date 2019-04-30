@@ -45,7 +45,6 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             # Store sample
             # X[i,] = np.load('data/' + ID + '.npy')
             x[0][i], x[1][i] = np.split(self.h5_file_predictions[self.name_of_dataset_in_file][ID], 2, axis=0)
-            x[0][i] = self.h5_file_to_be_processed['y_train'][ID]
             x[2][i] = self.h5_file_to_be_processed[self.name_of_dataset_in_file][ID]
             # np.split(X, np.arange(self.inputs_number), axis=1 )[1:4]
 
@@ -113,7 +112,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
     #         os.remove('temp/Generator_data.h5')     # Usunięcie jeżeli taki istnieje
 
     def convert_original_neural_network(self, model):
-        output = Lambda(CreateNN.soft_softmax_layer)(model.layers[-2].output)
+        output = Lambda(CreateNN.soft_softmax_layer(T=15))(model.layers[-2].output)
         return Model(inputs=model.inputs, outputs=(output, model.layers[-2].output))
 
     def __load_weights_to_neural_network(self):

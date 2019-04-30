@@ -50,6 +50,24 @@ def set_weights_as_ones(model):
 def loss_for_knowledge_distillation(y_true, y_pred):
     return y_pred
 
+def loss_of_ground_truth(y_true, y_pred):
+    return - K.sum(y_true * K.log(y_pred + K.epsilon()), axis=1, keepdims=True)
+
+def loss_of_logits(y_true, y_pred):
+
+    alpha = 0.15
+    T = 5
+
+    q_denominator = K.exp((y_pred - K.max(y_pred, axis=1, keepdims=True)) / T)
+    q_devider = K.sum(q_denominator, axis=1, keepdims=True)
+    q = q_denominator / q_devider
+
+    p_denominator = K.exp((y_true - K.max(y_true, axis=1, keepdims=True)) / T)
+    p_devider = K.sum(p_denominator, axis=1, keepdims=True)
+    p = p_denominator / p_devider
+
+    return - alpha * K.sum(p * K.log(q + K.epsilon()), axis=1, keepdims=True)
+
 def add_score_to_file(score, file_name='Skutecznosc warstw.json'):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
@@ -314,10 +332,13 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     #                            dir_to_weights=dir_to_original_model, **params)
 
     keras.backend.clear_session()
+
     shallowed_model = load_model(path_to_shallowed_model)
-    shallowed_model = NNModifier.add_loss_layer_for_knowledge_distillation(shallowed_model, num_classes=10)
+    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=[shallowed_model.layers[-1].output,
+                                                                    shallowed_model.layers[-2].output])
+
     optimizer_SGD = keras.optimizers.SGD(lr=0.1, momentum=0.9, nesterov=True)
-    shallowed_model.compile(optimizer=optimizer_SGD, loss=loss_for_knowledge_distillation)
+    shallowed_model.compile(optimizer=optimizer_SGD, loss=[loss_of_ground_truth, loss_of_logits])
 
     shallowed_model.fit_generator(generator=
                                   training_gen,

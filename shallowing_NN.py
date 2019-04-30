@@ -17,7 +17,7 @@ from NNModifier import NNModifier
 from NNLoader import NNLoader
 from CreateNN import CreateNN
 from Create_NN_graph import Create_NN_graph
-from DataGenerator_for_knowledge_distillation import DG_for_kd
+from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
 
 def check_weights_was_changed(old_model, new_model):
@@ -302,16 +302,14 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     earlyStopping = keras.callbacks.EarlyStopping(monitor='loss', patience=20)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
-
-    params = {'dim': (32, 32),
+    params = {'dim': (32, 32, 3),
               'batch_size': 128,
-              'n_classes': 10,
-              'n_channels': 3,
+              'number_of_classes': 10,
               'shuffle': True,
               'inputs_number': 3}
 
-    training_gen = DG_for_kd(x_data_name='x_train', data_dir='data/CIFAR10.h5',
-                             dir_to_weights=dir_to_original_model, **params)
+    training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train', path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
+                                                            path_to_weights=dir_to_original_model, **params)
     # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
     #                            dir_to_weights=dir_to_original_model, **params)
 
@@ -325,7 +323,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
                                   training_gen,
                                   use_multiprocessing=True,
                                   workers=10,
-                                  epochs=10,
+                                  epochs=100,
                                   callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
                                   initial_epoch=0
                                   )
@@ -333,7 +331,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
 
     # original_model.compile(SGD, loss='categorical_crossentropy', metrics=['accuracy'])
-    shallowed_model = NNModifier.remove_last_layer(shallowed_model)  # Removing loos layer
+    shallowed_model = NNModifier.remove_loos_layer(shallowed_model)  # Removing loos layer
     shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=['accuracy'])
     Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
 

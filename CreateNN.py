@@ -160,10 +160,16 @@ class CreateNN:
         return first_part + second_part
 
     @staticmethod
-    def soft_softmax_layer(args, T=5):
-        denominator = K.exp((args - K.max(args, axis=1, keepdims=True)) / T)   # przeskalowanie zapobiega błędom obliczeniowym
-        divider = K.sum(denominator, axis=1, keepdims=True)
-        return denominator / divider
+    def soft_softmax_layer(T=15):
+        def soft_softmax(args):
+            denominator = K.exp((args - K.max(args, axis=1, keepdims=True)) / T)   # przeskalowanie zapobiega błędom obliczeniowym
+            divider = K.sum(denominator, axis=1, keepdims=True)
+            soft_max_output = denominator / divider
+            def grad(dy):
+                return dy * T**2 * (soft_max_output * (1-soft_max_output))
+            return soft_max_output
+
+        return soft_softmax
 
 
 

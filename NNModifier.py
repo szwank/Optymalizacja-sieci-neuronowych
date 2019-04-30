@@ -234,6 +234,10 @@ class NNModifier:
         return Model(inputs=model.inputs, outputs=output)
 
 
+    @staticmethod
+    def remove_loos_layer(model):
+        return Model(inputs=model.inputs[2], outputs=model.layers[-2].output)
+
 
 
 

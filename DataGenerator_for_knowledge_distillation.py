@@ -9,23 +9,24 @@ from CreateNN import CreateNN
 from Create_NN_graph import Create_NN_graph
 
 
-class DG_for_kd(DataGenerator):
+class DataGenerator_for_knowledge_distillation(DataGenerator):
 
-    def __init__(self, x_data_name, data_dir, dir_to_weights, batch_size=32, dim=(32, 32), n_channels=3,
-                 n_classes=10, shuffle=True, inputs_number=3):
+    def __init__(self, name_of_data_set_in_file, path_to_h5py_data_to_be_processed, path_to_weights, batch_size=32,
+                 dim=(32, 32, 3), number_of_classes=10, shuffle=True, inputs_number=3):
         """Initialization"""
         self.dim = dim
         self.batch_size = batch_size
         # self.labels = labels
         # self.list_IDs = list_IDs
-        self.h5_file = h5py.File(data_dir, 'r')
-        self.n_channels = n_channels
-        self.n_classes = n_classes
+        self.h5_file_to_be_processed = h5py.File(path_to_h5py_data_to_be_processed, 'r')
+        self.number_of_classes = number_of_classes
         self.shuffle = shuffle
-        self.x_data_name = x_data_name
-        self.indexes = np.arange(len(self.h5_file[x_data_name]))
-        self.original_network = self.convert_original_neural_network(load_model(dir_to_weights))
-        self.inputs_number = inputs_number
+        self.name_of_dataset_in_file = name_of_data_set_in_file
+        self.number_of_data = len(self.h5_file_to_be_processed[name_of_data_set_in_file])
+        self.indexes = np.arange(self.number_of_data)
+        self.path_to_weights = path_to_weights
+        self.neural_network = self.convert_original_neural_network(load_model(path_to_weights))
+        self.number_of_inputs_in_trained_network = inputs_number
 
         self.h5_file_predictions = self.__Generate_predictions()
         self.on_epoch_end()
@@ -35,16 +36,16 @@ class DG_for_kd(DataGenerator):
         # Initialization
         y = np.zeros((self.batch_size), dtype=int)
         x = []
-        x.append(np.empty((self.batch_size, self.n_classes)))
-        x.append(np.empty((self.batch_size, self.n_classes)))
-        x.append(np.empty((self.batch_size, *self.dim, self.n_channels)))
+        x.append(np.empty((self.batch_size, self.number_of_classes)))
+        x.append(np.empty((self.batch_size, self.number_of_classes)))
+        x.append(np.empty((self.batch_size, *self.dim)))
 
         # Generate data
         for i, ID in enumerate(indexes):
             # Store sample
             # X[i,] = np.load('data/' + ID + '.npy')
-            x[0][i], x[1][i] = np.split(self.h5_file_predictions[self.x_data_name][ID], 2, axis=0)
-            x[2][i] = self.h5_file[self.x_data_name][ID]
+            x[0][i], x[1][i] = np.split(self.h5_file_predictions[self.name_of_dataset_in_file][ID], 2, axis=0)
+            x[2][i] = self.h5_file_to_be_processed[self.name_of_dataset_in_file][ID]
             # np.split(X, np.arange(self.inputs_number), axis=1 )[1:4]
 
         return x, y
@@ -53,35 +54,41 @@ class DG_for_kd(DataGenerator):
         if not os.path.exists('temp/'):  # Stworzenie folderu jeżeli nie istnieje.
             os.makedirs('temp/')
 
-        number_of_data = len(self.h5_file[self.x_data_name])
-
         h5f = h5py.File('temp/Generator_data.h5', 'a')
 
-        if self.x_data_name in list(h5f.keys()):    # sprawdzenie czy taki dataset istnieje
-            del h5f[self.x_data_name]   # jeżeli tak usunięcie. Brak usunięcia spowoduje błędy w przypadku istnienia.
-        data_set = h5f.create_dataset(self.x_data_name, (number_of_data, self.inputs_number-1, self.n_classes))   # Stworzenie pustej klasy w pliku
+        if self.name_of_dataset_in_file in list(h5f.keys()):  # sprawdzenie czy taki dataset istnieje
+            del h5f[
+                self.name_of_dataset_in_file]  # jeżeli tak usunięcie. Brak usunięcia spowoduje błędy w przypadku istnienia.
 
-        print('Generator starting generating predictions of original network for', self.x_data_name, '\n')
+        dimensions_of_dataset = (
+            self.number_of_data, self.number_of_inputs_in_trained_network - 1,
+            self.number_of_classes)
+        dataset_to_save_generated_data = h5f.create_dataset(self.name_of_dataset_in_file, dimensions_of_dataset)
 
-        for i in range(int(np.ceil(number_of_data/self.batch_size))):     # Generowanie danych w partiach
+        print('Generator starting generating predictions of original network for', self.name_of_dataset_in_file, '\n')
 
-            if (i+1) * self.batch_size < number_of_data:
-                generate_batch_size = self.batch_size   # Wielkość partij gdy pozostało wystarczająco dużo danych
+        self.__load_weights_to_neural_network()
+
+        number_of_batches = int(np.ceil(self.number_of_data / self.batch_size))
+
+        for i in range(number_of_batches):  # Generowanie danych w partiach
+
+            if (i + 1) * self.batch_size < self.number_of_data:
+                generated_batch_size = self.batch_size  # Wielkość partij gdy pozostało wystarczająco dużo danych
             else:
-                generate_batch_size = number_of_data - (i * self.batch_size)  # Wielkość partij gdy ilość
-                                                                    # pozostałych danych jest mniejsza niż batch_size
+                generated_batch_size = self.number_of_data - (i * self.batch_size)  # Wielkość partii gdy ilość
+                # pozostałych danych jest mniejsza niż batch_size
 
-            data = self.h5_file[self.x_data_name][i:(i + generate_batch_size)]  # Pobranie danych
-            # data = np.expand_dims(data, axis=0)     # Kłopoty z formatem
-            data = self.original_network.predict_on_batch(data)  # Wygenerowanie i
-                                                                                                  # utworzenie danych
-            data = np.asarray(data)     # Sformatowanie danych
-            data = np.swapaxes(data, 0, 1)      # format wyjściowy(batch size, ilość wyjść orginalnej sieci po
-                                                # przerobieniu, wymiar wyjść)
+            start_index = i * self.batch_size
+            end_index = start_index + generated_batch_size
 
-            data_set[i*self.batch_size:(i*self.batch_size + generate_batch_size), ] = data
+            data = self.h5_file_to_be_processed[self.name_of_dataset_in_file][start_index:end_index]  # Pobranie danych
 
-            percent = i * self.batch_size / number_of_data * 100
+            processed_data = self.__process_batch_of_data(data)
+
+            dataset_to_save_generated_data[start_index:end_index, ] = processed_data
+
+            percent = i * self.batch_size / self.number_of_data * 100
             # print('\r', percent, '% complited', end='')
             sys.stdout.write('\r%f complited' % percent)
             sys.stdout.flush()
@@ -90,13 +97,23 @@ class DG_for_kd(DataGenerator):
 
         return h5f
 
+    def __process_batch_of_data(self, data):
+
+        # data = np.expand_dims(data, axis=0)     # Kłopoty z formatem
+        procesed_data = self.neural_network.predict_on_batch(data)  # Wygenerowanie i
+        # utworzenie danych
+        procesed_data = np.asarray(procesed_data)  # Sformatowanie danych
+        procesed_data = np.swapaxes(procesed_data, 0, 1)  # format wyjściowy(batch size, ilość wyjść sieci po
+        # przerobieniu, wymiar wyjść)
+        return procesed_data
+
     # def __del__(self):
     #     if os.path.isfile('temp/Generator_data.h5'):  # Sprawdzenie czy istieje plik wygenerowany przez generator
     #         os.remove('temp/Generator_data.h5')     # Usunięcie jeżeli taki istnieje
 
     def convert_original_neural_network(self, model):
-        Create_NN_graph.create_NN_graph(Model(inputs=model.inputs, outputs=(model.layers[-1].output, model.layers[-2].output)), name='generator_model')
         output = Lambda(CreateNN.soft_softmax_layer)(model.layers[-2].output)
         return Model(inputs=model.inputs, outputs=(output, model.layers[-2].output))
 
-
+    def __load_weights_to_neural_network(self):
+        self.neural_network.load_weights(self.path_to_weights, by_name=True)

@@ -10,6 +10,7 @@ from keras.optimizers import SGD, Adam
 from keras.layers import Softmax
 import keras.backend as K
 from keras.losses import categorical_crossentropy
+from keras.metrics import categorical_accuracy, top_k_categorical_accuracy
 import numpy as np
 from keras.utils import plot_model
 import datetime
@@ -49,16 +50,14 @@ def set_weights_as_ones(model):
     model.set_weights(weights)
 
 
-def knowledge_distillation_loos(alpha_const, temperature):
-    def loos(y_true, y_pred):
-        y_true, logits = y_true[:, :10], y_true[:, 10:]
+def knowledge_distillation_loos(y_true, y_pred, alpha_const, temperature):
+    y_true, logits = y_true[:, :10], y_true[:, 10:]
 
-        y_soft = K.softmax(logits/temperature)
+    y_soft = K.softmax(logits/temperature)
 
-        y_pred, y_pred_soft = y_pred[:, :10], y_pred[:, 10:]
+    y_pred, y_pred_soft = y_pred[:, :10], y_pred[:, 10:]
 
-        return alpha_const * categorical_crossentropy(y_true, y_pred) + categorical_crossentropy(y_soft, y_pred_soft)
-    return loos
+    return alpha_const * categorical_crossentropy(y_true, y_pred) + categorical_crossentropy(y_soft, y_pred_soft)
 
 def loss_of_ground_truth(y_true, y_pred):
     return - K.sum(y_true * K.log(y_pred + K.epsilon()), axis=1, keepdims=True)
@@ -77,6 +76,29 @@ def loss_of_logits(y_true, y_pred):
     p = p_denominator / p_devider
 
     return - alpha * K.sum(p * K.log(q + K.epsilon()), axis=1, keepdims=True)
+
+def accuracy(y_true, y_pred):
+    y_true = y_true[:, :10]
+    y_pred = y_pred[:, :10]
+    return categorical_accuracy(y_true, y_pred)
+
+def top_5_accuracy(y_true, y_pred):
+    y_true = y_true[:, :10]
+    y_pred = y_pred[:, :10]
+    return top_k_categorical_accuracy(y_true, y_pred)
+
+def categorical_crossentropy_metric(y_true, y_pred):
+    y_true = y_true[:, :10]
+    y_pred = y_pred[:, :10]
+    return categorical_crossentropy(y_true, y_pred)
+
+def soft_categorical_crossentrophy(temperature):
+    def loos(y_true, y_pred):
+        logits = y_true[:, 10:]
+        y_soft = K.softmax(logits/temperature)
+        y_pred_soft = y_pred[:, 10:]
+        return categorical_crossentropy(y_soft, y_pred_soft)
+    return loos
 
 def add_score_to_file(score, file_name):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
@@ -288,7 +310,7 @@ def shallow_network(path_to_original_model, path_to_assessing_data='Skutecznosc 
         if accuracy_diference < margins:
             layers_to_remove.append(i)
         else:
-            last_effective_layer = i + 1
+            last_effective_layer += 1
 
     print('The following convolutional layers and their dependencies(ReLU, batch normalization)will be removed:',
           layers_to_remove, '\n')
@@ -334,7 +356,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     temperature = 5
 
     params = {'dim': (32, 32, 3),
-              'batch_size': 256,
+              'batch_size': 128,
               'number_of_classes': 10,
               'shuffle': True,
               'inputs_number': 3}
@@ -347,11 +369,15 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     keras.backend.clear_session()
 
     shallowed_model = load_model(path_to_shallowed_model)
-    logits = shallowed_model.layers[-2].output
+    shallowed_model.layers.pop()
+    logits = shallowed_model.layers[-1].output
     probabilieties = Softmax()(logits)
-    logits_T = Lambda(lambda x: x/temperature)
+
+    logits_T = Lambda(lambda x: x/temperature)(logits)
     probabilieties_T = Softmax()(logits_T)
+
     outputs = concatenate([probabilieties, probabilieties_T])
+
     shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
 
     # shallowed_model.load_weights('Zapis modelu/19-05-01 18-21/weights-improvement-28-2.21.hdf5')
@@ -359,17 +385,20 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
     optimizer_SGD = keras.optimizers.SGD(lr=0.1, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
-                            loss=knowledge_distillation_loos(alpha_const=0.07, temperature=temperature),
-                            metrics=['accuracy', 'top_5_accuracy', 'categorical_crossentropy', 'soft_logloss'])
+                            loss=lambda y_true, y_pred: knowledge_distillation_loos(y_true, y_pred,
+                                                                                    alpha_const=0.07,
+                                                                                    temperature=temperature),
+                            metrics=[accuracy, top_5_accuracy, categorical_crossentropy,
+                                     soft_categorical_crossentrophy(temperature)])
 
     shallowed_model.fit_generator(generator=
                                   training_gen,
                                   use_multiprocessing=False,
-                                  workers=10,
+                                  workers=20,
                                   epochs=1000,
-                                  callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
-                                  initial_epoch=0
+                                  callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation]
                                   )
+    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
     # shallowed_model.save('Zapis modelu/shallowed_model.h5')
 
 
@@ -414,13 +443,21 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
 if __name__ == '__main__':
 
-    assesing_conv_layers(path_to_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5', start_from_layer=0)
-    # shallowed_model = shallow_network(path_to_original_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
+    path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
+
+    # assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)
+
+    # model = load_model(path_to_original_model)
+    # model_hash = NNHasher.hash_model(model)
+    # K.clear_session()
     #
-    # path_to_shallowed_model = 'temp/model.hdf5'
+    # shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
+    #                                   path_to_assessing_data=str(model_hash))
+    #
+    path_to_shallowed_model = 'temp/model.hdf5'
     # save_model(shallowed_model, filepath=path_to_shallowed_model)
     # keras.backend.clear_session()
-    #
-    # knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
-    #                        dir_to_original_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
+
+    knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
+                           dir_to_original_model=path_to_original_model)
 

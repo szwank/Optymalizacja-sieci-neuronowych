@@ -29,7 +29,10 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
         self.neural_network = self.convert_original_neural_network(load_model(path_to_weights))
         self.number_of_inputs_in_trained_network = inputs_number
 
-        self.h5_file_predictions = self.__Generate_predictions()
+        if not self.__check_if_correct_data_exist():
+            self.h5_file_predictions = self.__Generate_predictions()
+        else:
+            self.h5_file_predictions = h5py.File('temp/Generator_data.h5', 'a')
         self.on_epoch_end()
 
     def _DataGenerator__data_generation(self, indexes):
@@ -50,7 +53,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             x[2][i] = self.h5_file_to_be_processed[self.name_of_dataset_in_file][ID]
             # np.split(X, np.arange(self.inputs_number), axis=1 )[1:4]
 
-        return x[2], x[0]
+        return x[2]/255.0, np.concatenate( (x[0], x[1]), axis=-1)
 
     def __Generate_predictions(self):
         if not os.path.exists('temp/'):  # Stworzenie folderu jeżeli nie istnieje.
@@ -65,37 +68,37 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
         dimensions_of_dataset = (
             self.number_of_data, self.number_of_inputs_in_trained_network - 1,
             self.number_of_classes)
-        dataset_to_save_generated_data = h5f.create_dataset(self.name_of_dataset_in_file, dimensions_of_dataset)
+        dataset_to_save_generated_data = h5f.create_dataset(self.name_of_dataset_in_file, dimensions_of_dataset, dtype='float64')
 
         print('Generator starting generating predictions of original network for', self.name_of_dataset_in_file, '\n')
 
         self.__load_weights_to_neural_network()
 
         number_of_batches = int(np.ceil(self.number_of_data / self.batch_size))
-        if not self.__check_if_correct_data_exist():
-            for i in range(number_of_batches):  # Generowanie danych w partiach
 
-                if (i + 1) * self.batch_size < self.number_of_data:
-                    generated_batch_size = self.batch_size  # Wielkość partij gdy pozostało wystarczająco dużo danych
-                else:
-                    generated_batch_size = self.number_of_data - (i * self.batch_size)  # Wielkość partii gdy ilość
-                    # pozostałych danych jest mniejsza niż batch_size
+        for i in range(number_of_batches):  # Generowanie danych w partiach
 
-                start_index = i * self.batch_size
-                end_index = start_index + generated_batch_size
+            if (i + 1) * self.batch_size < self.number_of_data:
+                generated_batch_size = self.batch_size  # Wielkość partij gdy pozostało wystarczająco dużo danych
+            else:
+                generated_batch_size = self.number_of_data - (i * self.batch_size)  # Wielkość partii gdy ilość
+                # pozostałych danych jest mniejsza niż batch_size
 
-                data = self.h5_file_to_be_processed[self.name_of_dataset_in_file][start_index:end_index]  # Pobranie danych
+            start_index = i * self.batch_size
+            end_index = start_index + generated_batch_size
 
-                processed_data = self.__process_batch_of_data(data)
+            data = self.h5_file_to_be_processed[self.name_of_dataset_in_file][start_index:end_index]  # Pobranie danych
 
-                dataset_to_save_generated_data[start_index:end_index, ] = processed_data
+            processed_data = self.__process_batch_of_data(data)
 
-                percent = i * self.batch_size / self.number_of_data * 100
-                # print('\r', percent, '% complited', end='')
-                sys.stdout.write('\r%f complited' % percent)
-                sys.stdout.flush()
+            dataset_to_save_generated_data[start_index:end_index, ] = processed_data
 
-            print('\nGeneration completed')
+            percent = i * self.batch_size / self.number_of_data * 100
+            # print('\r', percent, '% complited', end='')
+            sys.stdout.write('\r%f complited' % percent)
+            sys.stdout.flush()
+
+        print('\nGeneration completed')
 
         return h5f
 
@@ -122,14 +125,16 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
         self.neural_network.load_weights(self.path_to_weights, by_name=True)
 
     def __check_if_correct_data_exist(self):
-        indexes = np.random.random_integers(low=0, high=self.number_of_data, size=self.batch_size)
+        indexes = np.random.random_integers(low=0, high=self.number_of_data-1, size=self.batch_size)
+        indexes = np.ndarray.tolist(indexes)
+        indexes.sort()
         data = self.h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
         proceded_data = self.__process_batch_of_data(data)
 
         h5f = h5py.File('temp/Generator_data.h5', 'r')
         data_from_file = h5f[self.name_of_dataset_in_file][indexes]
-
-        if np.alltrue(proceded_data, data_from_file):
+        h5f.close()
+        if np.allclose(proceded_data, data_from_file, atol=0.001):
             print('Data was generated before. Skipping data generation.')
             return True
         else:

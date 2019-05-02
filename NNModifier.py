@@ -124,6 +124,7 @@ class NNModifier:
 
                     # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
                     json_object = NNModifier.remove_chosen_conv_block_from_json_string(json_object, i)
+                    witch_conv -= 1
 
                 witch_conv += 1
             i += 1

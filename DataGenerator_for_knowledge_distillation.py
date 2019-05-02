@@ -11,11 +11,12 @@ from Create_NN_graph import Create_NN_graph
 
 class DataGenerator_for_knowledge_distillation(DataGenerator):
 
-    def __init__(self, name_of_data_set_in_file, path_to_h5py_data_to_be_processed, path_to_weights, batch_size=32,
+    def __init__(self, name_of_data_set_in_file, path_to_h5py_data_to_be_processed, path_to_weights, T, batch_size=32,
                  dim=(32, 32, 3), number_of_classes=10, shuffle=True, inputs_number=3):
         """Initialization"""
         self.dim = dim
         self.batch_size = batch_size
+        self.T_parameter = T
         # self.labels = labels
         # self.list_IDs = list_IDs
         self.h5_file_to_be_processed = h5py.File(path_to_h5py_data_to_be_processed, 'r')
@@ -45,6 +46,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             # Store sample
             # X[i,] = np.load('data/' + ID + '.npy')
             x[0][i], x[1][i] = np.split(self.h5_file_predictions[self.name_of_dataset_in_file][ID], 2, axis=0)
+            x[1][i] = self.h5_file_to_be_processed['y_train'][ID]
             x[2][i] = self.h5_file_to_be_processed[self.name_of_dataset_in_file][ID]
             # np.split(X, np.arange(self.inputs_number), axis=1 )[1:4]
 
@@ -112,7 +114,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
     #         os.remove('temp/Generator_data.h5')     # Usunięcie jeżeli taki istnieje
 
     def convert_original_neural_network(self, model):
-        output = Lambda(CreateNN.soft_softmax_layer(T=15))(model.layers[-2].output)
+        output = Lambda(CreateNN.soft_softmax_layer(T=self.T_parameter))(model.layers[-2].output)
         return Model(inputs=model.inputs, outputs=(output, model.layers[-2].output))
 
     def __load_weights_to_neural_network(self):

@@ -17,6 +17,7 @@ from NNModifier import NNModifier
 from NNLoader import NNLoader
 from CreateNN import CreateNN
 from Create_NN_graph import Create_NN_graph
+from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
 
@@ -68,7 +69,7 @@ def loss_of_logits(y_true, y_pred):
 
     return - alpha * K.sum(p * K.log(q + K.epsilon()), axis=1, keepdims=True)
 
-def add_score_to_file(score, file_name='Skutecznosc warstw.json'):
+def add_score_to_file(score, file_name):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
     conv_layer_number = score[2]
@@ -96,6 +97,7 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
     print('Testowanie warstw konwolucyjnych')
 
     model = load_model(path_to_model)
+    model_hash = NNHasher.hash_model(model)
     model.summary()
 
     model_architecture = model.to_json(indent=4)
@@ -131,7 +133,7 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
                 scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
 
                 scores.append(count_conv_layer)
-                add_score_to_file(scores)
+                add_score_to_file(score=scores, file_name=model_hash)
 
                 # tf.reset_default_graph()
                 keras.backend.clear_session()
@@ -166,9 +168,9 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         os.makedirs(absolute_log_path)
 
     # Callback
-    # learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
-    #                                                              mode='auto', cooldown=5, min_lr=0.0005,
-    #                                                              min_delta=0.0005)
+    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
+                                                                 mode='auto', cooldown=5, min_lr=0.0005,
+                                                                 min_delta=0.001)
     # csv_logger = keras.callbacks.CSVLogger('training.log')  # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
     modelCheckPoint = keras.callbacks.ModelCheckpoint(  # Zapis sieci podczas uczenia
@@ -224,7 +226,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         verbose=1,
         steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
         epochs=1000,  # ilość epok treningu
-        callbacks=[tensorBoard, modelCheckPoint, earlyStopping],
+        callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
         validation_steps=VALIDATION_SIZE // BATCH_SIZE,
         workers=10,
         validation_data=val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE),
@@ -311,7 +313,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
         os.makedirs(scierzka_logow_dir)
 
     # Callback
-    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
+    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='lambda_1_loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
     # csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
     modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
@@ -327,20 +329,26 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
               'inputs_number': 3}
 
     training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train', path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
-                                                            path_to_weights=dir_to_original_model, **params)
+                                                            path_to_weights=dir_to_original_model, T=3.5, **params)
     # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
     #                            dir_to_weights=dir_to_original_model, **params)
 
     keras.backend.clear_session()
 
     shallowed_model = load_model(path_to_shallowed_model)
-    output = Lambda(CreateNN.soft_softmax_layer(T=10))(shallowed_model.layers[-2].output)
-    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=[output,
-                                                                    shallowed_model.layers[-2].output])
-    # shallowed_model.load_weights('Zapis modelu/19-04-30 12-53/weights-improvement-98-2.35.hdf5')
+    outputs1 = Lambda(CreateNN.soft_softmax_layer(T=3.5))(shallowed_model.layers[-2].output)
+    outputs2 = Softmax()(shallowed_model.layers[-2].output)
+    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=[outputs1,
+                                                                    outputs2])
+
+    shallowed_model.load_weights('Zapis modelu/19-05-01 18-21/weights-improvement-28-2.21.hdf5')
+
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
-    optimizer_SGD = keras.optimizers.SGD(lr=0.01, momentum=0.9, nesterov=True)
-    shallowed_model.compile(optimizer=optimizer_SGD, loss=[loss_of_ground_truth, loss_of_logits])
+    optimizer_SGD = keras.optimizers.SGD(lr=0.1, momentum=0.9, nesterov=True)
+    shallowed_model.compile(optimizer=optimizer_SGD,
+                            loss=['categorical_crossentropy', 'categorical_crossentropy'],
+                            loss_weights=[1., 0.03],
+                            metrics=['accuracy'])
 
     shallowed_model.fit_generator(generator=
                                   training_gen,
@@ -394,13 +402,13 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
 if __name__ == '__main__':
 
-    # assesing_conv_layers(path_to_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5', start_from_layer=10)
-    shallowed_model = shallow_network(path_to_original_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
-
-    path_to_shallowed_model = 'temp/model.hdf5'
-    save_model(shallowed_model, filepath=path_to_shallowed_model)
-    keras.backend.clear_session()
-
-    knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
-                           dir_to_original_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
+    assesing_conv_layers(path_to_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5', start_from_layer=0)
+    # shallowed_model = shallow_network(path_to_original_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
+    #
+    # path_to_shallowed_model = 'temp/model.hdf5'
+    # save_model(shallowed_model, filepath=path_to_shallowed_model)
+    # keras.backend.clear_session()
+    #
+    # knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
+    #                        dir_to_original_model='Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
 

@@ -2,6 +2,7 @@ from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Acti
 from keras.models import Model
 from keras import regularizers
 from keras import backend as K
+import tensorflow as tf
 class CreateNN:
 
     @staticmethod
@@ -9,8 +10,8 @@ class CreateNN:
         inputs = Input(shape=(32, 32, 3))
 
         x = Conv2D(64, (3, 3), padding='same')(inputs)
-        x = ReLU()(x)
         x = BatchNormalization()(x)
+        x = ReLU()(x)
         x = Conv2D(64, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
@@ -165,8 +166,9 @@ class CreateNN:
             denominator = K.exp((args - K.max(args, axis=1, keepdims=True)) / T)   # przeskalowanie zapobiega błędom obliczeniowym
             divider = K.sum(denominator, axis=1, keepdims=True)
             soft_max_output = denominator / divider
-            def grad(dy):
-                return dy * T**2 * (soft_max_output * (1-soft_max_output))
+
+            # def grad(dy):
+            #      return dy * T**2 * (soft_max_output * (1-soft_max_output))
             return soft_max_output
 
         return soft_softmax

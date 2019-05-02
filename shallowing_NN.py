@@ -3,12 +3,13 @@ import keras
 from keras.applications.vgg16 import VGG16
 from keras.datasets import cifar10
 from keras.preprocessing.image import ImageDataGenerator
-from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Lambda
+from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Lambda, concatenate
 from keras.models import Model, model_from_json, load_model, save_model
 from keras.utils import np_utils
 from keras.optimizers import SGD, Adam
 from keras.layers import Softmax
 import keras.backend as K
+from keras.losses import categorical_crossentropy
 import numpy as np
 from keras.utils import plot_model
 import datetime
@@ -48,8 +49,16 @@ def set_weights_as_ones(model):
     model.set_weights(weights)
 
 
-def loss_for_knowledge_distillation(y_true, y_pred):
-    return y_pred
+def knowledge_distillation_loos(alpha_const, temperature):
+    def loos(y_true, y_pred):
+        y_true, logits = y_true[:, :10], y_true[:, 10:]
+
+        y_soft = K.softmax(logits/temperature)
+
+        y_pred, y_pred_soft = y_pred[:, :10], y_pred[:, 10:]
+
+        return alpha_const * categorical_crossentropy(y_true, y_pred) + categorical_crossentropy(y_soft, y_pred_soft)
+    return loos
 
 def loss_of_ground_truth(y_true, y_pred):
     return - K.sum(y_true * K.log(y_pred + K.epsilon()), axis=1, keepdims=True)
@@ -322,6 +331,8 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     earlyStopping = keras.callbacks.EarlyStopping(monitor='loss', patience=20)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
+    temperature = 5
+
     params = {'dim': (32, 32, 3),
               'batch_size': 256,
               'number_of_classes': 10,
@@ -329,26 +340,27 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
               'inputs_number': 3}
 
     training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train', path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
-                                                            path_to_weights=dir_to_original_model, T=3.5, **params)
+                                                            path_to_weights=dir_to_original_model, T=temperature, **params)
     # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
     #                            dir_to_weights=dir_to_original_model, **params)
 
     keras.backend.clear_session()
 
     shallowed_model = load_model(path_to_shallowed_model)
-    outputs1 = Lambda(CreateNN.soft_softmax_layer(T=3.5))(shallowed_model.layers[-2].output)
-    outputs2 = Softmax()(shallowed_model.layers[-2].output)
-    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=[outputs1,
-                                                                    outputs2])
+    logits = shallowed_model.layers[-2].output
+    probabilieties = Softmax()(logits)
+    logits_T = Lambda(lambda x: x/temperature)
+    probabilieties_T = Softmax()(logits_T)
+    outputs = concatenate([probabilieties, probabilieties_T])
+    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
 
-    shallowed_model.load_weights('Zapis modelu/19-05-01 18-21/weights-improvement-28-2.21.hdf5')
+    # shallowed_model.load_weights('Zapis modelu/19-05-01 18-21/weights-improvement-28-2.21.hdf5')
 
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
     optimizer_SGD = keras.optimizers.SGD(lr=0.1, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
-                            loss=['categorical_crossentropy', 'categorical_crossentropy'],
-                            loss_weights=[1., 0.03],
-                            metrics=['accuracy'])
+                            loss=knowledge_distillation_loos(alpha_const=0.07, temperature=temperature),
+                            metrics=['accuracy', 'top_5_accuracy', 'categorical_crossentropy', 'soft_logloss'])
 
     shallowed_model.fit_generator(generator=
                                   training_gen,

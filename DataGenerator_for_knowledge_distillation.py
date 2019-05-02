@@ -50,7 +50,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             x[2][i] = self.h5_file_to_be_processed[self.name_of_dataset_in_file][ID]
             # np.split(X, np.arange(self.inputs_number), axis=1 )[1:4]
 
-        return x[2], [x[0], x[1]]
+        return x[2], x[0]
 
     def __Generate_predictions(self):
         if not os.path.exists('temp/'):  # Stworzenie folderu jeżeli nie istnieje.
@@ -114,8 +114,9 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
     #         os.remove('temp/Generator_data.h5')     # Usunięcie jeżeli taki istnieje
 
     def convert_original_neural_network(self, model):
-        output = Lambda(CreateNN.soft_softmax_layer(T=self.T_parameter))(model.layers[-2].output)
-        return Model(inputs=model.inputs, outputs=(output, model.layers[-2].output))
+        # output = Lambda(CreateNN.soft_softmax_layer(T=self.T_parameter))(model.layers[-2].output)
+
+        return Model(inputs=model.inputs, outputs=(model.layers[-1].output, model.layers[-2].output))
 
     def __load_weights_to_neural_network(self):
         self.neural_network.load_weights(self.path_to_weights, by_name=True)

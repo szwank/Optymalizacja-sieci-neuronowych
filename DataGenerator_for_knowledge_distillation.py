@@ -28,6 +28,8 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
         self.path_to_weights = path_to_weights
         self.neural_network = self.convert_original_neural_network(load_model(path_to_weights))
         self.number_of_inputs_in_trained_network = inputs_number
+        self.OUTPUT_FROM_SOFTMAX = 0
+        self.OUTPUT_BEFORE_SOFTMAX = 1
 
         if not self.__check_if_correct_data_exist():
             self.h5_file_predictions = self.__Generate_predictions()
@@ -37,23 +39,16 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
 
     def _DataGenerator__data_generation(self, indexes):
         """Generates data containing batch_size samples"""  # X : (n_samples, *dim, n_channels)
-        # Initialization
-        y = np.zeros((self.batch_size), dtype=int)
-        x = []
-        x.append(np.empty((self.batch_size, self.number_of_classes)))
-        x.append(np.empty((self.batch_size, self.number_of_classes)))
-        x.append(np.empty((self.batch_size, *self.dim)))
 
-        # Generate data
-        for i, ID in enumerate(indexes):
-            # Store sample
-            # X[i,] = np.load('data/' + ID + '.npy')
-            x[0][i], x[1][i] = np.split(self.h5_file_predictions[self.name_of_dataset_in_file][ID], 2, axis=0)
-            x[1][i] = self.h5_file_to_be_processed['y_train'][ID]
-            x[2][i] = self.h5_file_to_be_processed[self.name_of_dataset_in_file][ID]
-            # np.split(X, np.arange(self.inputs_number), axis=1 )[1:4]
+        indexes.sort()
+        indexes = np.ndarray.tolist(indexes)
 
-        return x[2]/255.0, np.concatenate( (x[0], x[1]), axis=-1)
+        softmax_output, before_softmax_output = np.split(self.h5_file_predictions[self.name_of_dataset_in_file][indexes], 2, axis=0)
+
+        input = self.h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
+        input = input / 255.0
+
+        return input, np.concatenate((softmax_output, before_softmax_output), axis=-1)
 
     def __Generate_predictions(self):
         if not os.path.exists('temp/'):  # Stworzenie folderu jeżeli nie istnieje.
@@ -134,7 +129,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
         h5f = h5py.File('temp/Generator_data.h5', 'r')
         data_from_file = h5f[self.name_of_dataset_in_file][indexes]
         h5f.close()
-        if np.allclose(proceded_data, data_from_file, atol=0.001):
+        if np.allclose(proceded_data, data_from_file, atol=0.0001):
             print('Data was generated before. Skipping data generation.')
             return True
         else:

@@ -11,25 +11,26 @@ from Create_NN_graph import Create_NN_graph
 
 class DataGenerator_for_knowledge_distillation(DataGenerator):
 
-    def __init__(self, name_of_data_set_in_file, path_to_h5py_data_to_be_processed, path_to_weights, T, batch_size=32,
+    def __init__(self, name_of_data_set_in_file, path_to_h5py_data_to_be_processed, path_to_weights, batch_size=32,
                  dim=(32, 32, 3), number_of_classes=10, shuffle=True, inputs_number=3):
         """Initialization"""
         self.dim = dim
         self.batch_size = batch_size
-        self.T_parameter = T
         # self.labels = labels
         # self.list_IDs = list_IDs
-        self.h5_file_to_be_processed = h5py.File(path_to_h5py_data_to_be_processed, 'r')
+        self.path_to_h5py_data_to_be_processed = path_to_h5py_data_to_be_processed
+
         self.number_of_classes = number_of_classes
         self.shuffle = shuffle
         self.name_of_dataset_in_file = name_of_data_set_in_file
-        self.number_of_data = len(self.h5_file_to_be_processed[name_of_data_set_in_file])
+
+        self.number_of_data = self.__get_number_of_file_to_be_pocesed()
         self.indexes = np.arange(self.number_of_data)
         self.path_to_weights = path_to_weights
         self.neural_network = self.convert_original_neural_network(load_model(path_to_weights))
         self.number_of_inputs_in_trained_network = inputs_number
-        self.OUTPUT_FROM_SOFTMAX = 0
-        self.OUTPUT_BEFORE_SOFTMAX = 1
+
+        self.path_to_generated_file = 'temp/Generator_data.h5'
 
         if not self.__check_if_correct_data_exist():
             self.h5_file_predictions = self.__Generate_predictions()
@@ -37,24 +38,31 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             self.h5_file_predictions = h5py.File('temp/Generator_data.h5', 'a')
         self.on_epoch_end()
 
+    def __len__(self):
+        'Denotes the number of batches per epoch'
+        return int(self.number_of_data/self.batch_size)
+
     def _DataGenerator__data_generation(self, indexes):
         """Generates data containing batch_size samples"""  # X : (n_samples, *dim, n_channels)
 
         indexes.sort()
         indexes = np.ndarray.tolist(indexes)
 
-        softmax_output, before_softmax_output = np.split(self.h5_file_predictions[self.name_of_dataset_in_file][indexes], 2, axis=0)
+        h5_file_to_be_processed = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
 
-        input = self.h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
+        ansers = self.h5_file_predictions[self.name_of_dataset_in_file][indexes]
+        ansers = np.reshape(ansers, (self.batch_size, self.number_of_classes*2))
+        input = h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
         input = input / 255.0
-
-        return input, np.concatenate((softmax_output, before_softmax_output), axis=-1)
+        # ansers = np.concatenate((softmax_output, before_softmax_output), axis=-1)
+        h5_file_to_be_processed.close()
+        return input, ansers
 
     def __Generate_predictions(self):
         if not os.path.exists('temp/'):  # Stworzenie folderu jeżeli nie istnieje.
             os.makedirs('temp/')
 
-        h5f = h5py.File('temp/Generator_data.h5', 'a')
+        h5f = h5py.File(self.path_to_generated_file, 'a')
 
         if self.name_of_dataset_in_file in list(h5f.keys()):  # sprawdzenie czy taki dataset istnieje
             del h5f[
@@ -69,6 +77,8 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
 
         self.__load_weights_to_neural_network()
 
+        h5_file_to_be_processed = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
+
         number_of_batches = int(np.ceil(self.number_of_data / self.batch_size))
 
         for i in range(number_of_batches):  # Generowanie danych w partiach
@@ -82,7 +92,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             start_index = i * self.batch_size
             end_index = start_index + generated_batch_size
 
-            data = self.h5_file_to_be_processed[self.name_of_dataset_in_file][start_index:end_index]  # Pobranie danych
+            data = h5_file_to_be_processed[self.name_of_dataset_in_file][start_index:end_index]  # Pobranie danych
 
             processed_data = self.__process_batch_of_data(data)
 
@@ -93,6 +103,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             sys.stdout.write('\r%f complited' % percent)
             sys.stdout.flush()
 
+        h5_file_to_be_processed.close()
         print('\nGeneration completed')
 
         return h5f
@@ -112,25 +123,38 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
     #         os.remove('temp/Generator_data.h5')     # Usunięcie jeżeli taki istnieje
 
     def convert_original_neural_network(self, model):
-        # output = Lambda(CreateNN.soft_softmax_layer(T=self.T_parameter))(model.layers[-2].output)
-
         return Model(inputs=model.inputs, outputs=(model.layers[-1].output, model.layers[-2].output))
 
     def __load_weights_to_neural_network(self):
         self.neural_network.load_weights(self.path_to_weights, by_name=True)
 
     def __check_if_correct_data_exist(self):
-        indexes = np.random.random_integers(low=0, high=self.number_of_data-1, size=self.batch_size)
+        if not os.path.exists(self.path_to_generated_file):
+            return False
+
+        h5f = h5py.File(self.path_to_generated_file, 'r')
+        if self.name_of_dataset_in_file not in h5f.keys():
+            h5f.close()
+            return False
+
+        h5_file_to_be_processed = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
+        indexes = np.arange(start=0, stop=self.batch_size)
         indexes = np.ndarray.tolist(indexes)
-        indexes.sort()
-        data = self.h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
+        data = h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
         proceded_data = self.__process_batch_of_data(data)
 
-        h5f = h5py.File('temp/Generator_data.h5', 'r')
+
         data_from_file = h5f[self.name_of_dataset_in_file][indexes]
         h5f.close()
+        h5_file_to_be_processed.close()
         if np.allclose(proceded_data, data_from_file, atol=0.0001):
             print('Data was generated before. Skipping data generation.')
             return True
         else:
             return False
+
+    def __get_number_of_file_to_be_pocesed(self):
+        h5f = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
+        number = len(h5f[self.name_of_dataset_in_file])
+        h5f.close()
+        return number

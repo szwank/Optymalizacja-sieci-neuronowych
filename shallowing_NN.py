@@ -1,27 +1,25 @@
-import tensorflow as tf
 import keras
-from keras.applications.vgg16 import VGG16
-from keras.datasets import cifar10
 from keras.preprocessing.image import ImageDataGenerator
-from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Lambda, concatenate
-from keras.models import Model, model_from_json, load_model, save_model
-from keras.utils import np_utils
-from keras.optimizers import SGD, Adam
+from keras.layers import Lambda, concatenate
+from keras.models import Model, load_model
+from keras.optimizers import SGD
 from keras.layers import Softmax
 import keras.backend as K
 from keras.losses import categorical_crossentropy
-from keras.metrics import categorical_accuracy, top_k_categorical_accuracy
 import numpy as np
-from keras.utils import plot_model
 import datetime
 import os
 from NNModifier import NNModifier
 from NNLoader import NNLoader
-from CreateNN import CreateNN
 from Create_NN_graph import Create_NN_graph
 from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
+
+from custom_loss_function import knowledge_distillation_loos
+from custom_metrics import accuracy, top_5_accuracy, soft_categorical_crossentrophy
+from utils.File_menager import FileManager
+
 
 def check_weights_was_changed(old_model, new_model):
     old_weights = old_model.get_weights()
@@ -49,56 +47,6 @@ def set_weights_as_ones(model):
         weights[i] = np.ones(dimension)
     model.set_weights(weights)
 
-
-def knowledge_distillation_loos(y_true, y_pred, alpha_const, temperature):
-    y_true, logits = y_true[:, :10], y_true[:, 10:]
-
-    y_soft = K.softmax(logits/temperature)
-
-    y_pred, y_pred_soft = y_pred[:, :10], y_pred[:, 10:]
-
-    return alpha_const * categorical_crossentropy(y_true, y_pred) + categorical_crossentropy(y_soft, y_pred_soft)
-
-def loss_of_ground_truth(y_true, y_pred):
-    return - K.sum(y_true * K.log(y_pred + K.epsilon()), axis=1, keepdims=True)
-
-def loss_of_logits(y_true, y_pred):
-
-    alpha = 0.15
-    T = 1
-
-    q_denominator = K.exp((y_pred - K.max(y_pred, axis=1, keepdims=True)) / T)
-    q_devider = K.sum(q_denominator, axis=1, keepdims=True)
-    q = q_denominator / q_devider
-
-    p_denominator = K.exp((y_true - K.max(y_true, axis=1, keepdims=True)) / T)
-    p_devider = K.sum(p_denominator, axis=1, keepdims=True)
-    p = p_denominator / p_devider
-
-    return - alpha * K.sum(p * K.log(q + K.epsilon()), axis=1, keepdims=True)
-
-def accuracy(y_true, y_pred):
-    y_true = y_true[:, :10]
-    y_pred = y_pred[:, :10]
-    return categorical_accuracy(y_true, y_pred)
-
-def top_5_accuracy(y_true, y_pred):
-    y_true = y_true[:, :10]
-    y_pred = y_pred[:, :10]
-    return top_k_categorical_accuracy(y_true, y_pred)
-
-def categorical_crossentropy_metric(y_true, y_pred):
-    y_true = y_true[:, :10]
-    y_pred = y_pred[:, :10]
-    return categorical_crossentropy(y_true, y_pred)
-
-def soft_categorical_crossentrophy(temperature):
-    def loos(y_true, y_pred):
-        logits = y_true[:, 10:]
-        y_soft = K.softmax(logits/temperature)
-        y_pred_soft = y_pred[:, 10:]
-        return categorical_crossentropy(y_soft, y_pred_soft)
-    return loos
 
 def add_score_to_file(score, file_name):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
@@ -329,19 +277,13 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
     print('Knowledge distillation')
 
-
-
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     scierzka_zapisu = 'Zapis modelu/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
-    scierzka_zapisu_dir = os.path.join(os.getcwd(), scierzka_zapisu)
-    if not os.path.exists(scierzka_zapisu_dir):  # stworzenie folderu jeżeli nie istnieje
-        os.makedirs(scierzka_zapisu_dir)
+    FileManager.create_folder(scierzka_zapisu)
 
     # Ustawienie ścieżki logów i stworzenie folderu jeżeli nie istnieje
     scierzka_logow = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
-    scierzka_logow_dir = os.path.join(os.getcwd(), scierzka_logow)
-    if not os.path.exists(scierzka_logow_dir):  # stworzenie folderu jeżeli nie istnieje
-        os.makedirs(scierzka_logow_dir)
+    FileManager.create_folder(scierzka_logow)
 
     # Callback
     learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='lambda_1_loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
@@ -361,8 +303,12 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
               'shuffle': True,
               'inputs_number': 3}
 
-    training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train', path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
-                                                            path_to_weights=dir_to_original_model, T=temperature, **params)
+    training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train',
+                                                            path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
+                                                            path_to_weights=dir_to_original_model,
+                                                            T=temperature,
+                                                            **params)
+
     # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
     #                            dir_to_weights=dir_to_original_model, **params)
 
@@ -370,6 +316,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
     shallowed_model = load_model(path_to_shallowed_model)
     shallowed_model.layers.pop()
+
     logits = shallowed_model.layers[-1].output
     probabilieties = Softmax()(logits)
 
@@ -380,15 +327,15 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
     shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
 
-    # shallowed_model.load_weights('Zapis modelu/19-05-01 18-21/weights-improvement-28-2.21.hdf5')
+    shallowed_model.load_weights('Zapis modelu/19-05-02 19-21/weights-improvement-70-2.38.hdf5')
 
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
     optimizer_SGD = keras.optimizers.SGD(lr=0.1, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
-                            loss=lambda y_true, y_pred: knowledge_distillation_loos(y_true, y_pred,
-                                                                                    alpha_const=0.07,
-                                                                                    temperature=temperature),
-                            metrics=[accuracy, top_5_accuracy, categorical_crossentropy,
+                            loss=knowledge_distillation_loos(alpha_const=0.07, temperature=temperature),
+                            metrics=[accuracy,
+                                     top_5_accuracy,
+                                     categorical_crossentropy,
                                      soft_categorical_crossentrophy(temperature)])
 
     shallowed_model.fit_generator(generator=
@@ -396,9 +343,10 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
                                   use_multiprocessing=False,
                                   workers=20,
                                   epochs=1000,
-                                  callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation]
+                                  callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
+                                  initial_epoch=70
                                   )
-    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+
     # shallowed_model.save('Zapis modelu/shallowed_model.h5')
 
 

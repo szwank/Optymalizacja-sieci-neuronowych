@@ -16,6 +16,8 @@ class TestDataGeneratorForKnowledgeDistillation(unittest.TestCase):
         model = load_model(path_to_weights)
         model = Model(inputs=model.inputs, outputs=model.layers[-2].output)
 
+        batch_size = 128
+
         params = {'dim': (32, 32, 3),
                   'batch_size': 128,
                   'number_of_classes': 10,
@@ -31,19 +33,19 @@ class TestDataGeneratorForKnowledgeDistillation(unittest.TestCase):
         optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
         model.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
-        for i in range(int(len(h5f_input['x_train']) / 5)):
-            percent = i / int(len(h5f_input['x_train']) / 5) * 100
+        for i in range(int(len(h5f_input['x_train']) / batch_size)):
+            percent = i / int(len(h5f_input['x_train']) / batch_size) * 100
             # print('\r', percent, '% complited', end='')
             sys.stdout.write('\r%f complited' % percent)
             sys.stdout.flush()
 
-            start_index = i * 5
-            end_index = start_index + 5
+            start_index = i * batch_size
+            end_index = start_index + batch_size
             data = h5f_input['x_train'][start_index:end_index]
-            prediction = model.predict_on_batch(data)
+            prediction = model.predict_on_batch(data/255.0)
             if not np.allclose(prediction, h5f_ansers['x_train'][start_index:end_index, 1], atol=0.001):
                 print('Index:')
-                print(i * 5)
+                print(i * batch_size)
                 print('Prediction:')
                 print(prediction)
                 print('Generated:')
@@ -52,27 +54,25 @@ class TestDataGeneratorForKnowledgeDistillation(unittest.TestCase):
 
         K.clear_session()
 
-        print('Testing ground_truth:')
+        print('\nTesting ground_truth:')
         model = load_model(path_to_weights)
-        output = Lambda(CreateNN.soft_softmax_layer)(model.layers[-2].output)
-        model = Model(inputs=model.inputs, outputs=output)
         optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
         model.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
-        for i in range(int(len(h5f_input['x_train']) / 5)):
+        for i in range(int(len(h5f_input['x_train']) / batch_size)):
 
-            percent = i / int(len(h5f_input['x_train']) / 5) * 100
+            percent = i / int(len(h5f_input['x_train']) / batch_size) * 100
             # print('\r', percent, '% complited', end='')
             sys.stdout.write('\r%f complited' % percent)
             sys.stdout.flush()
 
-            start_index = i * 5
-            end_index = start_index + 5
+            start_index = i * batch_size
+            end_index = start_index + batch_size
             data = h5f_input['x_train'][start_index:end_index]
-            prediction = model.predict_on_batch(data)
+            prediction = model.predict_on_batch(data/255.0)
             if not np.allclose(prediction, h5f_ansers['x_train'][start_index:end_index, 0], atol=0.001):
                 print('Index:')
-                print(i * 5)
+                print(i * batch_size)
                 print('Prediction:')
                 print(prediction)
                 print('Generated:')

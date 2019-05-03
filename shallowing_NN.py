@@ -1,4 +1,3 @@
-import keras
 from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import Lambda, concatenate
 from keras.models import Model, load_model
@@ -6,6 +5,7 @@ from keras.optimizers import SGD
 from keras.layers import Softmax
 import keras.backend as K
 from keras.losses import categorical_crossentropy
+from keras.callbacks import ReduceLROnPlateau, TensorBoard,ModelCheckpoint, EarlyStopping
 import numpy as np
 import datetime
 import os
@@ -17,7 +17,7 @@ from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge
 import json
 
 from custom_loss_function import knowledge_distillation_loos
-from custom_metrics import accuracy, top_5_accuracy, soft_categorical_crossentrophy
+from custom_metrics import accuracy, top_5_accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
 from utils.File_menager import FileManager
 
 
@@ -115,7 +115,7 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
                 add_score_to_file(score=scores, file_name=model_hash)
 
                 # tf.reset_default_graph()
-                keras.backend.clear_session()
+                K.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
 
@@ -147,15 +147,14 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         os.makedirs(absolute_log_path)
 
     # Callback
-    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
+    learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
                                                                  mode='auto', cooldown=5, min_lr=0.0005,
                                                                  min_delta=0.001)
-    # csv_logger = keras.callbacks.CSVLogger('training.log')  # Tworzenie logów
-    tensorBoard = keras.callbacks.TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
-    modelCheckPoint = keras.callbacks.ModelCheckpoint(  # Zapis sieci podczas uczenia
+    tensorBoard = TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
+    modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
         filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_acc',
         save_best_only=True, period=5, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
     # dokładność się nie zwiększa
 
     print('Using real-time data augmentation.')
@@ -215,7 +214,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         # max_queue_size=2
     )
 
-    keras.backend.clear_session()
+    K.clear_session()
     cutted_model = NNLoader.load_best_model_from_dir(absolute_path_to_save_model)
 
     test_generator = ImageDataGenerator(rescale=1. / 255,
@@ -233,11 +232,11 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
 
     print('Validation loss:', scores[0])
     print('Validation accuracy:', scores[1])
-    keras.backend.clear_session()
+    K.clear_session()
     return scores
 
 
-def shallow_network(path_to_original_model, path_to_assessing_data='Skutecznosc warstw.json'):
+def shallow_network(path_to_original_model, path_to_assessing_data):
     """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
 
     print('Wypłycanie sieci')
@@ -286,13 +285,12 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     FileManager.create_folder(scierzka_logow)
 
     # Callback
-    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='lambda_1_loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
-    # csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
-    tensorBoard = keras.callbacks.TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
-    modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
+    learning_rate_regulation = ReduceLROnPlateau(monitor='accuracy', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
+    tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
+    modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='loss', patience=20)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = EarlyStopping(monitor='val_accuracy', patience=20)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
     temperature = 5
@@ -306,13 +304,16 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train',
                                                             path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
                                                             path_to_weights=dir_to_original_model,
-                                                            T=temperature,
+                                                            **params)
+    validation_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_validation',
+                                                            path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
+                                                            path_to_weights=dir_to_original_model,
                                                             **params)
 
     # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
     #                            dir_to_weights=dir_to_original_model, **params)
 
-    keras.backend.clear_session()
+    K.clear_session()
 
     shallowed_model = load_model(path_to_shallowed_model)
     shallowed_model.layers.pop()
@@ -327,24 +328,25 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
     shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
 
-    shallowed_model.load_weights('Zapis modelu/19-05-02 19-21/weights-improvement-70-2.38.hdf5')
+    # shallowed_model.load_weights('Zapis modelu/19-05-02 19-21/weights-improvement-70-2.38.hdf5')
+    shallowed_model.summary()
 
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
-    optimizer_SGD = keras.optimizers.SGD(lr=0.1, momentum=0.9, nesterov=True)
+    optimizer_SGD = SGD(lr=0.1, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
                             loss=knowledge_distillation_loos(alpha_const=0.07, temperature=temperature),
                             metrics=[accuracy,
                                      top_5_accuracy,
-                                     categorical_crossentropy,
+                                     categorical_crossentropy_metric,
                                      soft_categorical_crossentrophy(temperature)])
 
-    shallowed_model.fit_generator(generator=
-                                  training_gen,
+    shallowed_model.fit_generator(generator=training_gen,
+                                  validation_data=validation_gen,
                                   use_multiprocessing=False,
-                                  workers=20,
+                                  workers=4,
                                   epochs=1000,
                                   callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
-                                  initial_epoch=70
+                                  initial_epoch=0
                                   )
 
     # shallowed_model.save('Zapis modelu/shallowed_model.h5')
@@ -355,21 +357,29 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=['accuracy'])
     Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
 
-    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+    test_generator = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_test',
+                                                            path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
+                                                            path_to_weights=dir_to_original_model,
+                                                            **params)
 
-    scores = shallowed_model.evaluate(x=x_test,
-                                      y=y_test,
-                                      verbose=1,
-                                      )
+    scores = shallowed_model.evaluate_generator(test_generator)
+
     print('Test loss:', scores[0])
     print('Test accuracy:', scores[1])
 
-    scores = shallowed_model.evaluate(x=x_train,
-                                      y=y_train,
-                                      verbose=1,
-                                      )
-    print('Test loss:', scores[0])
-    print('Test accuracy:', scores[1])
+    # scores = shallowed_model.evaluate(x=x_test,
+    #                                   y=y_test,
+    #                                   verbose=1,
+    #                                   )
+    # print('Test loss:', scores[0])
+    # print('Test accuracy:', scores[1])
+    #
+    # scores = shallowed_model.evaluate(x=x_train,
+    #                                   y=y_train,
+    #                                   verbose=1,
+    #                                   )
+    # print('Test loss:', scores[0])
+    # print('Test accuracy:', scores[1])
 
     # b = np.empty(4500)
     # b = shallowed_model.predict_generator(generator=training_gen,

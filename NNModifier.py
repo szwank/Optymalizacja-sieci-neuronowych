@@ -111,22 +111,25 @@ class NNModifier:
 
         Create_NN_graph.create_NN_graph(model, name='original_model.png')   # Utworzenie grafu orginalnej sieci
 
-        # Inicjalizacja zmiennych
         witch_conv = 1  # Licznik warstw konwolucyjnych
-        i = 0   # Licznik warstw sieci
+        number_of_removed_layers = 0
 
         json_model = model.to_json(indent=4)        # Przekonwertowanie modelu na słownik
         json_object = json.loads(json_model)
+        number_of_layers = len(json_object["config"]["layers"])
 
-        for layer in json_object["config"]["layers"]:  # Iteracja po warstwach w modelu
-            if layer["class_name"] == 'Conv2D':     # Sprawdzenie czy warstwa jest konwolucyjna
+        for layer_number in range(number_of_layers):  # Iteracja po warstwach w modelu
+            layer_number_to_remove = layer_number - number_of_removed_layers
+            if json_object["config"]["layers"][layer_number_to_remove]["class_name"] == 'Conv2D':     # Sprawdzenie czy warstwa jest konwolucyjna
                 if witch_conv in layers_numbers_to_remove:  # sprawdzenie czy warstwa jest na liście warstw do usunięcia
 
                     # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
-                    json_object = NNModifier.remove_chosen_conv_block_from_json_string(json_object, i)
-                    i -= 1
+                    json_object = NNModifier.remove_chosen_conv_block_from_json_string(json_object, layer_number_to_remove)
+                    number_of_removed_layers += 1
                 witch_conv += 1
-            i += 1
+                if len(json_object["config"]["layers"]) <= layer_number: # Zapewnienie że petla nigdy nie wejdzie na nie istniejące indeksy
+                    break
+
 
         json_model = json.dumps(json_object)# przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
         model = model_from_json(json_model)

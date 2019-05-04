@@ -7,6 +7,7 @@ from keras.layers import Lambda
 from DataGenerator import DataGenerator
 from CreateNN import CreateNN
 from Create_NN_graph import Create_NN_graph
+from mpi4py import MPI
 
 
 class DataGenerator_for_knowledge_distillation(DataGenerator):
@@ -50,11 +51,15 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
 
         h5_file_to_be_processed = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
 
-        ansers = self.h5_file_predictions[self.name_of_dataset_in_file][indexes]
-        ansers = np.reshape(ansers, (self.batch_size, self.number_of_classes*2))
+        ansers1 = self.h5_file_predictions[self.name_of_dataset_in_file][indexes, 1]
+        # ansers = np.reshape(ansers, (self.batch_size, self.number_of_classes*2))
+        name = list(self.name_of_dataset_in_file)
+        name[0] = 'y'
+        name = "".join(name)
+        ansers2 = h5_file_to_be_processed[name][indexes]
         input = h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
         input = input / 255.0
-        # ansers = np.concatenate((softmax_output, before_softmax_output), axis=-1)
+        ansers = np.concatenate((ansers2, ansers1), axis=-1)
         h5_file_to_be_processed.close()
         return input, ansers
 
@@ -62,7 +67,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
         if not os.path.exists('temp/'):  # Stworzenie folderu jeżeli nie istnieje.
             os.makedirs('temp/')
 
-        h5f = h5py.File(self.path_to_generated_file, 'a')
+        h5f = h5py.File(self.path_to_generated_file, 'a', driver='mpio', comm=MPI.COMM_WORLD)
 
         if self.name_of_dataset_in_file in list(h5f.keys()):  # sprawdzenie czy taki dataset istnieje
             del h5f[

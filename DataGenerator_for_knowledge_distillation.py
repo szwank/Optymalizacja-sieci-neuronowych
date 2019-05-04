@@ -13,31 +13,33 @@ from mpi4py import MPI
 class DataGenerator_for_knowledge_distillation(DataGenerator):
 
     def __init__(self, name_of_data_set_in_file, path_to_h5py_data_to_be_processed, path_to_weights, batch_size=32,
-                 dim=(32, 32, 3), number_of_classes=10, shuffle=True, inputs_number=3):
+                 dim=(32, 32, 3), number_of_classes=10, shuffle=True, path_to_generated_file='temp/Generator_data.h5'):
         """Initialization"""
+        self.LABELS = 0
+        self.LOGITS = 1
+
         self.dim = dim
         self.batch_size = batch_size
-        # self.labels = labels
-        # self.list_IDs = list_IDs
         self.path_to_h5py_data_to_be_processed = path_to_h5py_data_to_be_processed
 
         self.number_of_classes = number_of_classes
         self.shuffle = shuffle
         self.name_of_dataset_in_file = name_of_data_set_in_file
 
-        self.number_of_data = self.__get_number_of_file_to_be_pocesed()
+        self.number_of_data = self.__get_number_of_data_to_be_pocesed()
         self.indexes = np.arange(self.number_of_data)
         self.path_to_weights = path_to_weights
         self.neural_network = self.convert_original_neural_network(load_model(path_to_weights))
-        self.number_of_inputs_in_trained_network = inputs_number
-
-        self.path_to_generated_file = 'temp/Generator_data.h5'
+        self.path_to_generated_file = path_to_generated_file
+        self.input_data = self.__load_input_data()
+        self.correct_labels = self.__load_correct_labels()
 
         if not self.__check_if_correct_data_exist():
-            self.h5_file_predictions = self.__Generate_predictions()
-        else:
-            self.h5_file_predictions = h5py.File('temp/Generator_data.h5', 'a')
-        self.on_epoch_end()
+            self.__Generate_predictions()
+
+        self.predictions = self.__load_predictions()
+
+        self.on_epoch_end()  # Musi być wywołana ostatnia
 
     def __len__(self):
         'Denotes the number of batches per epoch'
@@ -49,40 +51,32 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
         indexes.sort()
         indexes = np.ndarray.tolist(indexes)
 
-        h5_file_to_be_processed = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
+        correct_labels = self.correct_labels[indexes]
+        predicted_logits = self.predictions[indexes, self.LOGITS]
+        answers = np.concatenate((correct_labels, predicted_logits), axis=-1)
 
-        ansers1 = self.h5_file_predictions[self.name_of_dataset_in_file][indexes, 1]
-        # ansers = np.reshape(ansers, (self.batch_size, self.number_of_classes*2))
-        name = list(self.name_of_dataset_in_file)
-        name[0] = 'y'
-        name = "".join(name)
-        ansers2 = h5_file_to_be_processed[name][indexes]
-        input = h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
-        input = input / 255.0
-        ansers = np.concatenate((ansers2, ansers1), axis=-1)
-        h5_file_to_be_processed.close()
-        return input, ansers
+        inputs = self.input_data[indexes]
+        inputs = inputs / 255.0
+
+        return inputs, answers
+
 
     def __Generate_predictions(self):
         if not os.path.exists('temp/'):  # Stworzenie folderu jeżeli nie istnieje.
             os.makedirs('temp/')
 
-        h5f = h5py.File(self.path_to_generated_file, 'a', driver='mpio', comm=MPI.COMM_WORLD)
+        h5f = h5py.File(self.path_to_generated_file, 'a')
 
         if self.name_of_dataset_in_file in list(h5f.keys()):  # sprawdzenie czy taki dataset istnieje
             del h5f[
                 self.name_of_dataset_in_file]  # jeżeli tak usunięcie. Brak usunięcia spowoduje błędy w przypadku istnienia.
 
-        dimensions_of_dataset = (
-            self.number_of_data, self.number_of_inputs_in_trained_network - 1,
-            self.number_of_classes)
+        dimensions_of_dataset = (self.number_of_data, 2, self.number_of_classes)
         dataset_to_save_generated_data = h5f.create_dataset(self.name_of_dataset_in_file, dimensions_of_dataset, dtype='float64')
 
         print('Generator starting generating predictions of original network for', self.name_of_dataset_in_file, '\n')
 
         self.__load_weights_to_neural_network()
-
-        h5_file_to_be_processed = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
 
         number_of_batches = int(np.ceil(self.number_of_data / self.batch_size))
 
@@ -97,7 +91,7 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             start_index = i * self.batch_size
             end_index = start_index + generated_batch_size
 
-            data = h5_file_to_be_processed[self.name_of_dataset_in_file][start_index:end_index]  # Pobranie danych
+            data = self.input_data[start_index:end_index]  # Pobranie danych
 
             processed_data = self.__process_batch_of_data(data)
 
@@ -108,10 +102,8 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             sys.stdout.write('\r%f complited' % percent)
             sys.stdout.flush()
 
-        h5_file_to_be_processed.close()
         print('\nGeneration completed')
-
-        return h5f
+        h5f.close()
 
     def __process_batch_of_data(self, data):
 
@@ -142,24 +134,44 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             h5f.close()
             return False
 
-        h5_file_to_be_processed = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
         indexes = np.arange(start=0, stop=self.batch_size)
         indexes = np.ndarray.tolist(indexes)
-        data = h5_file_to_be_processed[self.name_of_dataset_in_file][indexes]
+        data = self.input_data[indexes]
         proceded_data = self.__process_batch_of_data(data)
 
 
         data_from_file = h5f[self.name_of_dataset_in_file][indexes]
         h5f.close()
-        h5_file_to_be_processed.close()
+
         if np.allclose(proceded_data, data_from_file, atol=0.0001):
             print('Data was generated before. Skipping data generation.')
             return True
         else:
             return False
 
-    def __get_number_of_file_to_be_pocesed(self):
+    def __get_number_of_data_to_be_pocesed(self):
         h5f = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
         number = len(h5f[self.name_of_dataset_in_file])
         h5f.close()
         return number
+
+    def __load_input_data(self):
+        h5f = h5py.File(self.path_to_h5py_data_to_be_processed)
+        data = h5f[self.name_of_dataset_in_file][()]
+        h5f.close()
+        return data
+
+    def __load_predictions(self):
+        h5f = h5py.File(self.path_to_generated_file)
+        predictions = h5f[self.name_of_dataset_in_file][()]
+        h5f.close()
+        return predictions
+
+    def __load_correct_labels(self):
+        name = list(self.name_of_dataset_in_file)
+        name[0] = 'y'
+        name = "".join(name)
+        h5f = h5py.File(self.path_to_h5py_data_to_be_processed, 'r')
+        correct_labels = h5f[name][()]
+        h5f.close()
+        return correct_labels

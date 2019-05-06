@@ -174,4 +174,56 @@ class CreateNN:
         return soft_softmax
 
 
+    @staticmethod
+    def get_shallowed_model(weight_decay=0.0001):
+        inputs = Input(shape=(32, 32, 3))
+
+        x = Conv2D(64, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(inputs)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+        x = Conv2D(64, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+
+        x = MaxPool2D(pool_size=(2, 2))(x)
+
+        # x = Dropout(0.4)(x)
+
+        x = Conv2D(128, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+        x = Conv2D(128, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+
+        x = MaxPool2D(pool_size=(2, 2))(x)
+
+        x = Conv2D(256, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+        x = Conv2D(256, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+
+        x = MaxPool2D(pool_size=(2, 2))(x)
+
+        x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+
+        x = MaxPool2D(pool_size=(2, 2))(x)
+
+        x = Conv2D(512, (3, 3), padding='same', kernel_regularizer=regularizers.l2(weight_decay))(x)
+        x = BatchNormalization()(x)
+        x = ReLU()(x)
+
+        x = Flatten()(x)
+
+        x = Dense(10)(x)
+        x = BatchNormalization()(x)
+        x = Softmax()(x)
+
+        model = Model(inputs=inputs, outputs=x)
+        return model
+
 

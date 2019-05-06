@@ -15,6 +15,7 @@ from Create_NN_graph import Create_NN_graph
 from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
+from CreateNN import CreateNN
 
 from custom_loss_function import knowledge_distillation_loos
 from custom_metrics import accuracy, top_5_accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
@@ -290,23 +291,28 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = EarlyStopping(monitor='val_accuracy', patience=25, min_delta=0.01)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric', patience=25, min_delta=0.005)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
-    temperature = 20
+    temperature = 6
+
+    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+
     params = {'dim': (32, 32, 3),
               'batch_size': 128,
               'number_of_classes': 10,
               'shuffle': True}
 
     training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train',
-                                                            path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
+                                                            data_to_be_processed=x_train,
+                                                            labels=y_train,
                                                             path_to_weights=dir_to_original_model,
                                                             **params)
     validation_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_validation',
-                                                            path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
-                                                            path_to_weights=dir_to_original_model,
-                                                            **params)
+                                                              data_to_be_processed=x_validation,
+                                                              labels=y_validation,
+                                                              path_to_weights=dir_to_original_model,
+                                                              **params)
 
     # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
     #                            dir_to_weights=dir_to_original_model, **params)
@@ -314,6 +320,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     K.clear_session()
 
     shallowed_model = load_model(path_to_shallowed_model)
+    # shallowed_model = CreateNN.get_shallowed_model()
     shallowed_model.layers.pop()
 
     logits = shallowed_model.layers[-1].output
@@ -330,11 +337,10 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     shallowed_model.summary()
 
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
-    optimizer_SGD = SGD(lr=0.1, momentum=0.9, nesterov=True)
+    optimizer_SGD = SGD(lr=0.01, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
-                            loss=knowledge_distillation_loos(alpha_const=0.03, temperature=temperature),
+                            loss=knowledge_distillation_loos(alpha_const=0.05, temperature=temperature),
                             metrics=[accuracy,
-                                     top_5_accuracy,
                                      categorical_crossentropy_metric,
                                      soft_categorical_crossentrophy(temperature)])
 
@@ -357,13 +363,14 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
 
     test_generator = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_test',
-                                                            path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
-                                                            path_to_weights=dir_to_original_model,
-                                                            **params)
+                                                              data_to_be_processed=x_test,
+                                                              labels=y_test,
+                                                              path_to_weights=dir_to_original_model,
+                                                              **params)
 
     scores = shallowed_model.evaluate_generator(test_generator)
     print(scores)
-    print('Test loss:', scores[0])
+    print('Test loss:', scores[2])
     print('Test accuracy:', scores[1])
 
     # scores = shallowed_model.evaluate(x=x_test,

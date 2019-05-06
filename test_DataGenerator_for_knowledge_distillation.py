@@ -4,6 +4,7 @@ from keras.optimizers import SGD
 from keras.layers import Lambda
 from CreateNN import CreateNN
 import keras.backend as K
+from NNLoader import NNLoader
 import h5py
 import numpy as np
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
@@ -17,66 +18,37 @@ class TestDataGeneratorForKnowledgeDistillation(unittest.TestCase):
         model = Model(inputs=model.inputs, outputs=model.layers[-2].output)
 
         batch_size = 128
-
+        [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
         params = {'dim': (32, 32, 3),
-                  'batch_size': 128,
+                  'batch_size': batch_size,
                   'number_of_classes': 10,
-                  'shuffle': True,
-                  'inputs_number': 3}
+                  'shuffle': True}
 
         training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train',
-                                                                path_to_h5py_data_to_be_processed='data/CIFAR10.h5',
-                                                                path_to_weights=path_to_weights, **params)
+                                                                data_to_be_processed=x_train,
+                                                                labels=y_train,
+                                                                path_to_weights=path_to_weights,
+                                                                **params)
         print('Testing logits:')
-        h5f_ansers = h5py.File('temp/Generator_data.h5', 'r')
-        h5f_input = h5py.File('data/CIFAR10.h5', 'r')
         optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
         model.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
-        for i in range(int(len(h5f_input['x_train']) / batch_size)):
-            percent = i / int(len(h5f_input['x_train']) / batch_size) * 100
+        for i in range(len(training_gen)):
+            percent = i / len(training_gen) * 100
             # print('\r', percent, '% complited', end='')
             sys.stdout.write('\r%f complited' % percent)
             sys.stdout.flush()
 
-            start_index = i * batch_size
-            end_index = start_index + batch_size
-            data = h5f_input['x_train'][start_index:end_index]
-            prediction = model.predict_on_batch(data/255.0)
-            if not np.allclose(prediction, h5f_ansers['x_train'][start_index:end_index, 1], atol=0.001):
+            data = training_gen[i]
+            prediction = model.predict_on_batch(data[0])
+            if not np.allclose(prediction, data[1][:, 10:20], atol=0.001):
                 print('Index:')
                 print(i * batch_size)
                 print('Prediction:')
                 print(prediction)
                 print('Generated:')
-                print(h5f_ansers['x_train'][start_index:end_index][1])
+                print(data[1][:, 10:20])
                 raise ValueError('Wartości nie są identyczne')
 
         K.clear_session()
 
-        print('\nTesting ground_truth:')
-        model = load_model(path_to_weights)
-        optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
-        model.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
-
-        for i in range(int(len(h5f_input['x_train']) / batch_size)):
-
-            percent = i / int(len(h5f_input['x_train']) / batch_size) * 100
-            # print('\r', percent, '% complited', end='')
-            sys.stdout.write('\r%f complited' % percent)
-            sys.stdout.flush()
-
-            start_index = i * batch_size
-            end_index = start_index + batch_size
-            data = h5f_input['x_train'][start_index:end_index]
-            prediction = model.predict_on_batch(data/255.0)
-            if not np.allclose(prediction, h5f_ansers['x_train'][start_index:end_index, 0], atol=0.001):
-                print('Index:')
-                print(i * batch_size)
-                print('Prediction:')
-                print(prediction)
-                print('Generated:')
-                print(h5f_ansers['x_train'][start_index:end_index][0])
-                raise ValueError('Wartości nie są identyczne')
-
-        K.clear_session()

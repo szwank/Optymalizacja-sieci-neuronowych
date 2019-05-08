@@ -130,14 +130,8 @@ class NNModifier:
                 if len(json_object["config"]["layers"]) <= layer_number: # Zapewnienie że petla nigdy nie wejdzie na nie istniejące indeksy
                     break
 
-
         json_model = json.dumps(json_object)# przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
         model = model_from_json(json_model)
-
-        Create_NN_graph.create_NN_graph(model, name='shallowed_model.png')   # Utowrzenie grafu zmodyfikowanej sieci
-
-        if 'weights_save.h5' in os.listdir('temp/'):  # Usunięcie wag sieci
-            os.remove('temp/weights_save.h5')
 
         return model
 
@@ -240,6 +234,38 @@ class NNModifier:
     @staticmethod
     def remove_loos_layer(model):
         return Model(inputs=model.inputs[2], outputs=model.layers[-2].output)
+
+    @staticmethod
+    def rename_choosen_conv_layers(model, chosen_layer_list):
+        json_model = model.to_json(indent=4)  # Przekonwertowanie modelu na słownik
+        json_object = json.loads(json_model)
+
+        witch_conv = 0
+        number_of_layers = len(json_object["config"]["layers"])
+
+        for layer_number in range(number_of_layers):  # Iteracja po warstwach w modelu
+            if json_object["config"]["layers"][layer_number]["class_name"] == 'Conv2D':     # Sprawdzenie czy warstwa jest konwolucyjna
+                if witch_conv in chosen_layer_list:  # sprawdzenie czy warstwa jest na liście warstw do usunięcia
+
+                    # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
+                    json_object = NNModifier.add_phrase_to_layer_name(json_object, layer_number, '_changed')
+                witch_conv += 1
+
+        json_model = json.dumps(json_object)  # przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
+        model = model_from_json(json_model)
+        return model
+
+
+    @staticmethod
+    def add_phrase_to_layer_name(json_object, layer_number, phrase):
+        old_layer_name = json_object["config"]["layers"][layer_number]["name"]
+        new_name = "".join([old_layer_name, phrase])
+        json_object["config"]["layers"][layer_number]["name"] = new_name
+        json_object["config"]["layers"][layer_number]['config']["name"] = new_name
+        json_object["config"]["layers"][layer_number + 1]['inbound_nodes'][0][0][0] = new_name
+        return json_object
+
+
 
 
 

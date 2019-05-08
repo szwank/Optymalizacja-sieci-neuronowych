@@ -268,6 +268,7 @@ def shallow_network(path_to_original_model, path_to_assessing_data):
 
     # wczytanie sieci
     original_model = load_model(path_to_original_model)
+    original_model = NNModifier.rename_choosen_conv_layers(original_model, [x+1 for x in layers_to_remove])
     shallowed_model = NNModifier.remove_chosen_conv_layers(original_model, layers_to_remove)
     return shallowed_model
 
@@ -286,7 +287,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     FileManager.create_folder(scierzka_logow)
 
     # Callback
-    learning_rate_regulation = ReduceLROnPlateau(monitor='accuracy', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.007)
+    learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=3, verbose=1, mode='auto', cooldown=5, min_delta=0.07)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
@@ -294,7 +295,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric', patience=25, min_delta=0.005)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
-    temperature = 6
+    temperature = 4
 
     [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
 
@@ -326,20 +327,20 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     logits = shallowed_model.layers[-1].output
     probabilieties = Softmax()(logits)
 
-    logits_T = Lambda(lambda x: x/temperature)(logits)
-    probabilieties_T = Softmax()(logits_T)
+    # logits_T = Lambda(lambda x: x/temperature)(logits)
+    # probabilieties_T = Softmax()(logits_T)
 
-    outputs = concatenate([probabilieties, probabilieties_T])
+    outputs = concatenate([probabilieties, logits])
 
     shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
 
-    # shallowed_model.load_weights('Zapis modelu/19-05-03 15-57/weights-improvement-56-2.36.hdf5')
+    shallowed_model.load_weights(path_to_original_model, by_name=True)
     shallowed_model.summary()
 
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
-    optimizer_SGD = SGD(lr=0.01, momentum=0.9, nesterov=True)
+    optimizer_SGD = SGD(lr=0.001, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
-                            loss=knowledge_distillation_loos(alpha_const=0.05, temperature=temperature),
+                            loss=knowledge_distillation_loos(alpha_const=10.6, temperature=temperature),
                             metrics=[accuracy,
                                      categorical_crossentropy_metric,
                                      soft_categorical_crossentrophy(temperature)])
@@ -349,7 +350,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
                                   use_multiprocessing=True,
                                   workers=4,
                                   epochs=1000,
-                                  callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
+                                  callbacks=[tensorBoard, modelCheckPoint, learning_rate_regulation],
                                   initial_epoch=0
                                   )
 
@@ -373,37 +374,6 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     print('Test loss:', scores[2])
     print('Test accuracy:', scores[1])
 
-    # scores = shallowed_model.evaluate(x=x_test,
-    #                                   y=y_test,
-    #                                   verbose=1,
-    #                                   )
-    # print('Test loss:', scores[0])
-    # print('Test accuracy:', scores[1])
-    #
-    # scores = shallowed_model.evaluate(x=x_train,
-    #                                   y=y_train,
-    #                                   verbose=1,
-    #                                   )
-    # print('Test loss:', scores[0])
-    # print('Test accuracy:', scores[1])
-
-    # b = np.empty(4500)
-    # b = shallowed_model.predict_generator(generator=training_gen,
-    #                                       workers=4,
-    #                                       verbose=1,
-    #                                       use_multiprocessing=True)
-
-    # shallowed_model.summary()
-    # file = NNLoader.load('temp.txt')
-    # print('kot płot')
-    #
-    # count_nan = 0
-    # for i, table in enumerate(b):
-    #     for line in table:
-    #         if math.isnan(line):
-    #             count_nan += 1
-    #
-    # print('w tabeli jest', count_nan, 'NaN')
 
 if __name__ == '__main__':
 
@@ -411,16 +381,16 @@ if __name__ == '__main__':
 
     # assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)
 
-    # model = load_model(path_to_original_model)
-    # model_hash = NNHasher.hash_model(model)
-    # K.clear_session()
-    #
-    # shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
-    #                                   path_to_assessing_data=str(model_hash))
+    model = load_model(path_to_original_model)
+    model_hash = NNHasher.hash_model(model)
+    K.clear_session()
+
+    shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
+                                      path_to_assessing_data=str(model_hash))
 
     path_to_shallowed_model = 'temp/model.hdf5'
-    # save_model(shallowed_model, filepath=path_to_shallowed_model)
-    # K.clear_session()
+    save_model(shallowed_model, filepath=path_to_shallowed_model)
+    K.clear_session()
 
     knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
                            dir_to_original_model=path_to_original_model)

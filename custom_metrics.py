@@ -25,7 +25,8 @@ def soft_categorical_crossentrophy(temperature):
     def soft_categorical_crossentrophy_metric(y_true, y_pred):
         logits = y_true[:, 10:]
         y_soft = K.softmax(logits/temperature)
-        y_pred_soft = y_pred[:, 10:]
-        return categorical_crossentropy(y_soft, y_pred_soft)
+        y_pred = y_pred[:, 10:]
+        y_soft_pred = K.softmax(y_pred / temperature)
+        return categorical_crossentropy(y_soft, y_soft_pred)
 
     return soft_categorical_crossentrophy_metric

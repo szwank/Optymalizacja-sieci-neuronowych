@@ -4,8 +4,7 @@ from keras.models import Model, load_model, save_model
 from keras.optimizers import SGD
 from keras.layers import Softmax
 import keras.backend as K
-from keras.losses import categorical_crossentropy
-from keras.callbacks import ReduceLROnPlateau, TensorBoard,ModelCheckpoint, EarlyStopping
+from keras.callbacks import ReduceLROnPlateau, TensorBoard, ModelCheckpoint, EarlyStopping
 import numpy as np
 import datetime
 import os
@@ -15,12 +14,10 @@ from Create_NN_graph import Create_NN_graph
 from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
-from CreateNN import CreateNN
-
 from custom_loss_function import knowledge_distillation_loos
-from custom_metrics import accuracy, top_5_accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
+from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
 from utils.File_menager import FileManager
-
+import tensorflow as tf
 
 def check_weights_was_changed(old_model, new_model):
     old_weights = old_model.get_weights()
@@ -287,33 +284,29 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     FileManager.create_folder(scierzka_logow)
 
     # Callback
-    learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=3, verbose=1, mode='auto', cooldown=5, min_delta=0.07)
+    learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric', patience=25, min_delta=0.005)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = EarlyStopping(monitor='val_loss', patience=25)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
-    temperature = 4
+    temperature = 6
 
     [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
 
-    params = {'dim': (32, 32, 3),
-              'batch_size': 128,
-              'number_of_classes': 10,
-              'shuffle': True}
+    generator = ImageDataGenerator(rescale=1. / 255,
+                                   samplewise_center=True,  # set each sample mean to 0
+                                   samplewise_std_normalization=True  # divide each input by its std
+                                   )
 
-    training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train',
-                                                            data_to_be_processed=x_train,
-                                                            labels=y_train,
+    training_gen = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_train, y_train, batch_size=64),
                                                             path_to_weights=dir_to_original_model,
-                                                            **params)
-    validation_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_validation',
-                                                              data_to_be_processed=x_validation,
-                                                              labels=y_validation,
+                                                            shuffle=True)
+    validation_gen = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_validation, y_validation, batch_size=8),
                                                               path_to_weights=dir_to_original_model,
-                                                              **params)
+                                                              shuffle=True)
 
     # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
     #                            dir_to_weights=dir_to_original_model, **params)
@@ -334,24 +327,26 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
     shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
 
-    shallowed_model.load_weights(path_to_original_model, by_name=True)
+    # shallowed_model.load_weights(path_to_original_model, by_name=True)
+    # shallowed_model.load_weights('Zapis modelu/19-05-08 18-39/weights-improvement-28-1.75.hdf5', by_name=True)
     shallowed_model.summary()
 
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
-    optimizer_SGD = SGD(lr=0.001, momentum=0.9, nesterov=True)
+    optimizer_SGD = SGD(lr=0.1, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
-                            loss=knowledge_distillation_loos(alpha_const=10.6, temperature=temperature),
+                            loss=knowledge_distillation_loos(alpha_const=10, temperature=temperature),
                             metrics=[accuracy,
                                      categorical_crossentropy_metric,
                                      soft_categorical_crossentrophy(temperature)])
 
     shallowed_model.fit_generator(generator=training_gen,
                                   validation_data=validation_gen,
-                                  use_multiprocessing=True,
+                                  use_multiprocessing=False,
                                   workers=4,
                                   epochs=1000,
-                                  callbacks=[tensorBoard, modelCheckPoint, learning_rate_regulation],
-                                  initial_epoch=0
+                                  callbacks=[tensorBoard, modelCheckPoint, learning_rate_regulation, earlyStopping],
+                                  initial_epoch=0,
+                                  max_queue_size=1
                                   )
 
     # shallowed_model.save('Zapis modelu/shallowed_model.h5')
@@ -362,12 +357,10 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=[accuracy,
                                      categorical_crossentropy_metric])
     Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
-
-    test_generator = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_test',
-                                                              data_to_be_processed=x_test,
-                                                              labels=y_test,
+    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+    test_generator = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_test, y_test, batch_size=128),
                                                               path_to_weights=dir_to_original_model,
-                                                              **params)
+                                                              shuffle=True)
 
     scores = shallowed_model.evaluate_generator(test_generator)
     print(scores)
@@ -376,7 +369,6 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
 
 if __name__ == '__main__':
-
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
     # assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)

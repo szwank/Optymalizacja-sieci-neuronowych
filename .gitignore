@@ -9,6 +9,7 @@ Prace naukowe/**
 Zapis modelu-uciete/**
 __pycache__/**
 data/**
+code/Zapis modelu/**
 
 # Ignorowanie poszczegulnych plików
 *.hdf5

@@ -1,13 +1,14 @@
 import tensorflow.keras as keras
 import tensorflow as tf
 from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Softmax, Lambda,\
-    BatchNormalization, ReLU
+    BatchNormalization, ReLU, concatenate
 from keras import regularizers
 from keras.models import Model, model_from_json
 from keras.utils import plot_model
 from CreateNN import CreateNN
 from Create_NN_graph import Create_NN_graph
 from NNSaver import NNSaver
+import numpy as np
 import json
 import os
 import keras.backend as K
@@ -57,7 +58,11 @@ class NNModifier:
     def cut_model_to(model, cut_after_layer, leave_layers=[]):
         """Metoda zwraca model ucięty do wskazanej warstwy konwolucyjnej."""
         if not leave_layers:        # sprawdzenie czy lista leave_layers jest pusta
-            return Model(model.input, model.layers[cut_after_layer].output)
+            model.save('temp/model.h5')
+            model = Model(model.input, model.layers[cut_after_layer].output)
+            model.load_weights('temp/model.h5', by_name=True)
+            os.remove('temp/model.h5')
+            return model
         else:
             json_model = model.to_json(indent=4)  # Przekonwertowanie modelu na słownik
             json_object = json.loads(json_model)
@@ -264,6 +269,94 @@ class NNModifier:
         json_object["config"]["layers"][layer_number]['config']["name"] = new_name
         json_object["config"]["layers"][layer_number + 1]['inbound_nodes'][0][0][0] = new_name
         return json_object
+
+    @staticmethod
+    def split_last_conv_block(model, filters_in_grup_after_division, kernel_dimension=(3, 3), pading='same'):
+
+        output_layers = []
+
+        conv_layer_name_first_part = 'splited_conv2d_'
+        batchnormalization_name_first_part = 'splited_batch_normalization_'
+        relu_name_first_part = 'splited_relu_'
+        for i in range(1, len(model.layers)+1):
+            if 'conv2d' in model.layers[-i].name:
+                conv_weights = model.layers[-i].get_weights()
+                conv_weights[0] = np.swapaxes(conv_weights[0], 0, 3)
+                conv_weights[0] = np.swapaxes(conv_weights[0], 1, 2)
+                if 'batch_normalization' in model.layers[-i+1].name:
+                    batch_normalization_weights = model.layers[-i+1].get_weights()
+
+                for j in range(int(conv_weights[0].shape[0]/filters_in_grup_after_division)):
+                    x = Conv2D(filters_in_grup_after_division, kernel_dimension, padding=pading,
+                               name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
+                    x = BatchNormalization(name=batchnormalization_name_first_part + str(j))(x)
+                    x = ReLU(name=relu_name_first_part + str(j))(x)
+                    output_layers.append(x)
+                break
+
+        if output_layers is []:
+            raise TypeError("Model don't have convolutional layer")
+
+        model.save('temp/model.h5')
+        model = Model(inputs=model.inputs, outputs=output_layers)
+        model.load_weights('temp/model.h5', by_name=True)
+        os.remove('temp/model.h5')
+
+        for layer in model.layers:
+            layer_name = layer.name
+            if conv_layer_name_first_part in layer_name:
+                conv_layer_number = int(layer_name[-1])
+                start_index = conv_layer_number * filters_in_grup_after_division
+                end_index = (conv_layer_number + 1) * filters_in_grup_after_division
+                layer_weights = conv_weights[0][start_index:end_index]
+                layer_weights = np.swapaxes(layer_weights, 0, 3)
+                layer_weights = np.swapaxes(layer_weights, 1, 2)
+
+                layer_biases = conv_weights[1][start_index:end_index]
+
+                layer.set_weights([layer_weights, layer_biases])
+
+            if batchnormalization_name_first_part in layer_name:
+                batch_normalization_layer_number = int(layer_name[-1])
+                start_index = batch_normalization_layer_number * filters_in_grup_after_division
+                end_index = (batch_normalization_layer_number + 1) * filters_in_grup_after_division
+                layer_weights = []
+                for narray in batch_normalization_weights:
+                    layer_weights.append(narray[start_index:end_index])
+
+                layer.set_weights(layer_weights)
+
+        return model
+
+    @staticmethod
+    def add_clssifiers_to_the_all_ends(model, number_of_classes):
+        model.save('temp/model.h5')
+        activation_outputs = []
+        for i, output in enumerate(model.output):
+
+            y = output
+            y = Lambda(lambda x: K.stop_gradient(x))(y)
+            y = Flatten()(y)
+            y = Dense(number_of_classes, name='Added_classifier_'+str(i))(y)
+            y = BatchNormalization(name='Added_normalization_layer_'+str(i))(y)
+            y = Softmax(name='Added_Softmax_'+str(i))(y)
+            activation_outputs.append(y)
+
+        # output = concatenate(activation_outputs)
+        model.load_weights('temp/model.h5', by_name=True)
+        os.remove('temp/model.h5')
+        model = Model(model.input, activation_outputs)
+        return model
+
+    @staticmethod
+    def add_concentrate_output_to_the_end(model):
+        model.save('temp/model.h5')
+        concentrate_output = concatenate(model.outputs)
+        model.outputs.append(concentrate_output)
+        model = Model(model.inputs, model.outputs)
+        model.load_weights('temp/model.h5', by_name=True)
+
+        return model
 
 
 

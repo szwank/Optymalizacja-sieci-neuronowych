@@ -18,8 +18,6 @@ class CreateNN:
 
         x = MaxPool2D(pool_size=(2, 2))(x)
 
-        # x = Dropout(0.4)(x)
-
         x = Conv2D(128, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)
         x = ReLU()(x)
@@ -40,7 +38,6 @@ class CreateNN:
         x = ReLU()(x)
 
         x = MaxPool2D(pool_size=(2, 2))(x)
-
 
         x = Conv2D(512, (3, 3), padding='same')(x)
         x = BatchNormalization()(x)

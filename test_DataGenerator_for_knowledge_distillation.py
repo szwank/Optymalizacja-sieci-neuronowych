@@ -35,7 +35,6 @@ class TestDataGeneratorForKnowledgeDistillation(unittest.TestCase):
 
         for i in range(len(training_gen)):
             percent = i / len(training_gen) * 100
-            # print('\r', percent, '% complited', end='')
             sys.stdout.write('\r%f complited' % percent)
             sys.stdout.flush()
 
@@ -51,4 +50,42 @@ class TestDataGeneratorForKnowledgeDistillation(unittest.TestCase):
                 raise ValueError('Wartości nie są identyczne')
 
         K.clear_session()
+
+    def test_data_corelation(self):
+        path_to_weights = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
+        batch_size = 128
+        [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+        params = {'dim': (32, 32, 3),
+                  'batch_size': batch_size,
+                  'number_of_classes': 10,
+                  'shuffle': True}
+
+        training_gen = DataGenerator_for_knowledge_distillation(name_of_data_set_in_file='x_train',
+                                                                data_to_be_processed=x_train,
+                                                                labels=y_train,
+                                                                path_to_weights=path_to_weights,
+                                                                **params)
+        correct_ansers = 0
+
+        for i in range(len(training_gen)):
+            percent = i / len(training_gen) * 100
+            sys.stdout.write('\r%f complited' % percent)
+            sys.stdout.flush()
+
+            data = training_gen[i]
+            correct_labels = data[1][:, 10:]
+            correct_labels = np.ndarray.tolist(correct_labels)
+            logits = data[1][:, :10]
+            softmax = np.exp(logits)/(np.sum(np.exp(logits)))
+            softmax = np.ndarray.tolist(softmax)
+
+            for j in range(len(correct_labels[:])):
+                correct_labels_index = correct_labels[j].index(max(correct_labels[j]))
+                softmax_index = softmax[j].index(max(softmax[j]))
+                if correct_labels_index == softmax_index:
+                    correct_ansers += 1
+
+        print('\ncorrect ansers', correct_ansers, 'of', len(x_train))
+        if correct_ansers/len(x_train) <= 0.80:
+            raise ValueError('Za mała wartość korelacij')
 

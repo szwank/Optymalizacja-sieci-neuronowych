@@ -1,71 +1,62 @@
 import numpy as np
-import h5py
-import os
 import sys
 from keras.models import Model, load_model
-from keras.layers import Lambda
 from DataGenerator import DataGenerator
-from CreateNN import CreateNN
-from Create_NN_graph import Create_NN_graph
+import keras.backend as K
+import tensorflow as tf
+import gc
+
 
 
 class DataGenerator_for_knowledge_distillation(DataGenerator):
 
-    def __init__(self, name_of_data_set_in_file, path_to_h5py_data_to_be_processed, path_to_weights, batch_size=32,
-                 dim=(32, 32, 3), number_of_classes=10, shuffle=True, inputs_number=3):
+    def __init__(self, generator, path_to_weights, shuffle=True):
         """Initialization"""
-        self.dim = dim
-        self.batch_size = batch_size
-        # self.labels = labels
-        # self.list_IDs = list_IDs
-        self.h5_file_to_be_processed = h5py.File(path_to_h5py_data_to_be_processed, 'r')
-        self.number_of_classes = number_of_classes
-        self.shuffle = shuffle
-        self.name_of_dataset_in_file = name_of_data_set_in_file
-        self.number_of_data = len(self.h5_file_to_be_processed[name_of_data_set_in_file])
+        self.LABELS = 0
+        self.LOGITS = 1
+
+        self.dim = generator.x.shape[1:]
+        self.batch_size = generator.batch_size
+        self.number_of_classes = generator.y.shape[-1]
+        self.number_of_data = generator.n
+
+        self.input_data, self.correct_labels = self.__generate_inputs_and_correct_labels(generator)
+
         self.indexes = np.arange(self.number_of_data)
+
         self.path_to_weights = path_to_weights
         self.neural_network = self.convert_original_neural_network(load_model(path_to_weights))
-        self.number_of_inputs_in_trained_network = inputs_number
 
-        self.h5_file_predictions = self.__Generate_predictions()
-        self.on_epoch_end()
+        self.predictions = self.__Generate_predictions()
+
+        self.shuffle = shuffle
+        self.on_epoch_end()  # Musi być wywołana ostatnia
+
+    def __len__(self):
+        'Denotes the number of batches per epoch'
+        return int(self.number_of_data/self.batch_size)
 
     def _DataGenerator__data_generation(self, indexes):
         """Generates data containing batch_size samples"""  # X : (n_samples, *dim, n_channels)
-        # Initialization
-        y = np.zeros((self.batch_size), dtype=int)
-        x = []
-        x.append(np.empty((self.batch_size, self.number_of_classes)))
-        x.append(np.empty((self.batch_size, self.number_of_classes)))
-        x.append(np.empty((self.batch_size, *self.dim)))
 
-        # Generate data
-        for i, ID in enumerate(indexes):
-            # Store sample
-            # X[i,] = np.load('data/' + ID + '.npy')
-            x[0][i], x[1][i] = np.split(self.h5_file_predictions[self.name_of_dataset_in_file][ID], 2, axis=0)
-            x[2][i] = self.h5_file_to_be_processed[self.name_of_dataset_in_file][ID]
-            # np.split(X, np.arange(self.inputs_number), axis=1 )[1:4]
+        indexes.sort()
+        indexes = np.ndarray.tolist(indexes)
 
-        return x, y
+        correct_labels = self.correct_labels[indexes]
+        predicted_logits = self.predictions[indexes, self.LOGITS]
+        answers = np.concatenate((correct_labels, predicted_logits), axis=-1)
+
+        inputs = self.input_data[indexes]
+        inputs = inputs
+
+        return inputs, answers
+
 
     def __Generate_predictions(self):
-        if not os.path.exists('temp/'):  # Stworzenie folderu jeżeli nie istnieje.
-            os.makedirs('temp/')
+        dimensions_of_dataset = (self.number_of_data, 2, self.number_of_classes)
 
-        h5f = h5py.File('temp/Generator_data.h5', 'a')
-
-        if self.name_of_dataset_in_file in list(h5f.keys()):  # sprawdzenie czy taki dataset istnieje
-            del h5f[
-                self.name_of_dataset_in_file]  # jeżeli tak usunięcie. Brak usunięcia spowoduje błędy w przypadku istnienia.
-
-        dimensions_of_dataset = (
-            self.number_of_data, self.number_of_inputs_in_trained_network - 1,
-            self.number_of_classes)
-        dataset_to_save_generated_data = h5f.create_dataset(self.name_of_dataset_in_file, dimensions_of_dataset)
-
-        print('Generator starting generating predictions of original network for', self.name_of_dataset_in_file, '\n')
+        generated_data = np.zeros(dimensions_of_dataset)
+        print('Generator starting generating predictions of original network\n')
 
         self.__load_weights_to_neural_network()
 
@@ -82,20 +73,20 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
             start_index = i * self.batch_size
             end_index = start_index + generated_batch_size
 
-            data = self.h5_file_to_be_processed[self.name_of_dataset_in_file][start_index:end_index]  # Pobranie danych
+            data = self.input_data[start_index:end_index]  # Pobranie danych
 
             processed_data = self.__process_batch_of_data(data)
 
-            dataset_to_save_generated_data[start_index:end_index, ] = processed_data
+            generated_data[start_index:end_index, ] = processed_data
 
             percent = i * self.batch_size / self.number_of_data * 100
-            # print('\r', percent, '% complited', end='')
+
             sys.stdout.write('\r%f complited' % percent)
             sys.stdout.flush()
 
-        print('\nGeneration completed')
+        print('\nGeneration completed\n')
 
-        return h5f
+        return generated_data
 
     def __process_batch_of_data(self, data):
 
@@ -107,13 +98,37 @@ class DataGenerator_for_knowledge_distillation(DataGenerator):
         # przerobieniu, wymiar wyjść)
         return procesed_data
 
-    # def __del__(self):
-    #     if os.path.isfile('temp/Generator_data.h5'):  # Sprawdzenie czy istieje plik wygenerowany przez generator
-    #         os.remove('temp/Generator_data.h5')     # Usunięcie jeżeli taki istnieje
 
     def convert_original_neural_network(self, model):
-        output = Lambda(CreateNN.soft_softmax_layer)(model.layers[-2].output)
-        return Model(inputs=model.inputs, outputs=(output, model.layers[-2].output))
+        return Model(inputs=model.inputs, outputs=(model.layers[-1].output, model.layers[-2].output))
 
     def __load_weights_to_neural_network(self):
         self.neural_network.load_weights(self.path_to_weights, by_name=True)
+
+    def __generate_inputs_and_correct_labels(self, generator):
+        input_dimension = (self.number_of_data, *self.dim)
+        input = np.empty(input_dimension)
+        correct_label_dimension = (self.number_of_data, self.number_of_classes)
+        correct_labels = np.empty(correct_label_dimension)
+
+        for i in range(len(generator)):
+            data = generator[i]
+            start_index = i * self.batch_size
+            end_index = start_index + len(data[1])
+            input[start_index:end_index] = data[0]
+            correct_labels[start_index:end_index] = data[1]
+        return input, correct_labels
+
+    def reset_keras_session(self):
+        sess = K.get_session()
+        K.clear_session()
+        sess.close()
+
+        print(gc.collect())  # if it's done something you should see a number being outputted
+
+        # use the same config as you used to create the session
+        config = tf.ConfigProto()
+        config.gpu_options.visible_device_list = "0"
+        # config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = 1
+

@@ -4,6 +4,7 @@ from keras.datasets import cifar10
 from keras.utils import np_utils
 from keras.models import load_model
 import os
+import re
 
 
 
@@ -45,23 +46,32 @@ class NNLoader:
         return [x_train, x_validation, x_test], [y_train, y_validation, y_test]
 
     @staticmethod
-    def load_best_model_from_dir(directory):
-        """Metoda wczytuje najleprzy model sieci neuronowej w folderze directory. Key_words, służą do filtrowania po
-        nazwie. Wczytywany model musi posiadać słowa kluczowe."""
+    def load_best_model_from_dir(directory, mode):
+        """Metoda wczytuje najleprzy model sieci neuronowej w folderze directory. argument mode słuzy do stwierdzenia
+        czy szukamy najmniejszego czy największego parametru w nazwie.
+        mode, możliwe parametry: 'lowest', 'highest'."""
 
-        list_of_files = os.listdir(directory)
+        list_of_files_names = os.listdir(directory)
         position_of_best = 0
-        best_accuracy = 0
+        best_evaluation_parameter = re.findall("\d+\.\d+", list_of_files_names[0])
+        
+        if mode not in ['lowest', 'highest']:
+            raise ValueError('NIe znana wartośc parametru mode. Dostępne: "lowest", "highest"')
 
-        for i, file in enumerate(list_of_files):
-            if 'weights-improvement' in file:
-                split_string = file.split('.')
-                accuracy = float(split_string[1])
-                if accuracy > best_accuracy:
-                    best_accuracy = accuracy
-                    position_of_best = i
+        for i, file_name in enumerate(list_of_files_names):
+            if 'weights-improvement' in file_name:
+                evaluation_parameter = re.findall("\d+\.\d+", file_name)
+                if mode is 'highest':
+                    if evaluation_parameter > best_evaluation_parameter:
+                        best_evaluation_parameter = evaluation_parameter
+                        position_of_best = i
 
-        return load_model(os.path.join(directory, list_of_files[position_of_best]))
+                if mode is 'lowest':
+                    if evaluation_parameter < best_evaluation_parameter:
+                        best_evaluation_parameter = evaluation_parameter
+                        position_of_best = i
+
+        return load_model(os.path.join(directory, list_of_files_names[position_of_best]))
 
     @staticmethod
     def load_best_weights_from_dir(model, directory):

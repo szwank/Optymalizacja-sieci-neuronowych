@@ -3,6 +3,7 @@ import keras
 import h5py
 
 
+
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
     def __init__(self, x_data_name, y_data_name, data_dir, batch_size=32, dim=(32, 32), n_channels=3,
@@ -23,6 +24,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def __len__(self):
         'Denotes the number of batches per epoch'
+
         return int(np.floor(len(self.h5_file_to_be_processed[self.name_of_dataset_in_file]) / self.batch_size))
 
     def __getitem__(self, index):

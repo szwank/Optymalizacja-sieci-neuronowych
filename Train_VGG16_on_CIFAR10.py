@@ -32,7 +32,7 @@ def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
     # original_network.summary()
     # Wczytanie wag
     # original_network.load_weights('Zapis modelu/19-03-04 13-18/weights-improvement-99-0.85.hdf5', by_name=True)
-    # original_network = keras.models.load_model('Zapis modelu/19-03-03 22-26/weights-improvement-15-0.82.hdf5')
+    # original_network = keras.models.load_model('temp/model.hdf5')
     # original_network = keras.models.load_model('Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5')
     original_network.summary()
     # original_network.load_weights('Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5', by_name=True)

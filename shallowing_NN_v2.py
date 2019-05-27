@@ -21,23 +21,23 @@ from custom_loss_function import loss_for_many_clasificators
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 
 
-def add_score_to_file(score, file_name):
+def add_score_to_file(score, file_name, number_of_trained_clasificator):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
     conv_layer_number = score[-1]
     middle_position = int((len(score) - 2) / 2) + 1
     loss = score[:middle_position]
-    accuracy = score[middle_position:-2]
+    accuracy = score[middle_position:]
 
     if os.path.exists(file_name):
         file = open(file_name, "r")
         json_string = file.read()
         dictionary = json.loads(json_string)
-        subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
+        subordinate_dictionary = {str(conv_layer_number): {'loss': loss[1:], 'accuracy': accuracy[:-2]}}
         dictionary.update(subordinate_dictionary)
         file.close()
     else:
-        dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
+        dictionary = {str(conv_layer_number): {'loss': loss[1:], 'accuracy': accuracy[:-2]}}
 
     file = open(file_name, "w")
     json_string = json.dumps(dictionary)
@@ -45,7 +45,7 @@ def add_score_to_file(score, file_name):
     file.close()
 
 
-def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
+def assesing_conv_layers(path_to_model, start_from_layer=1, BATCH_SIZE=256):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
     print('Testowanie warstw konwolucyjnych')
@@ -73,7 +73,7 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
                 cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i+2)  # i + 2 ponieważ trzeba uwzględnić
                                                                                 # jeszcze warstwę normalizującą i ReLU
 
-                cutted_model = NNModifier.split_last_conv_block(cutted_model, filters_in_grup_after_division=4)
+                cutted_model = NNModifier.split_last_conv_block(cutted_model, split_on_x_new_filters=32)
                 cutted_model.summary()
 
                 for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
@@ -86,26 +86,30 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
                 cutted_model.summary()
 
                 del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
-
-                scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
-
+                # save_model(cutted_model, 'temp/model.h5')
+                # for i in range(32):
+                #     cutted_model = load_model('temp/model.h5')
+                scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer, number_of_trained_clasificator=i)
+                #
                 scores.append(count_conv_layer)
-                add_score_to_file(score=scores, file_name=model_hash+'v2')
+                add_score_to_file(score=scores, file_name=model_hash+'v2', number_of_trained_clasificator=0)
 
                 # tf.reset_default_graph()
                 K.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
 
-def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
-    """Funkcja trenująca i oceniająca skuteczność sieci"""
+def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID, number_of_trained_clasificator):
     number_of_model_outputs = len(cutted_model.outputs)
     optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
     # optimizer = Adam(lr=0.1, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
     loss = ['categorical_crossentropy'] * number_of_model_outputs
+    loss_weights = [1.0/number_of_model_outputs] * number_of_model_outputs
+    # loss_weights[number_of_trained_clasificator] = 1.0
     cutted_model.compile(optimizer,
                          loss=loss,
-                         metrics=['accuracy'])
+                         metrics=['accuracy'],
+                         loss_weights=loss_weights)
     # Wczytanie bazy zdjęć
     [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
 
@@ -128,14 +132,14 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         os.makedirs(absolute_log_path)
 
     # Callback
-    learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1,
-                                                                 mode='auto', cooldown=5, min_lr=0.0005,
+    learning_rate_regulation = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=7, verbose=1,
+                                                                 mode='auto', cooldown=3, min_lr=0.0005,
                                                                  min_delta=0.001)
     tensorBoard = TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
         filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_loss:.2f}.hdf5", monitor='val_loss',
         save_best_only=True, period=5, save_weights_only=False)
-    earlyStopping = EarlyStopping(monitor='val_loss', patience=25, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
     # dokładność się nie zwiększa
 
     print('Using real-time data augmentation.')
@@ -215,18 +219,67 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     print(scores)
     return scores
 
+def shallow_network(path_to_original_model, path_to_assessing_data):
+    """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
+
+    print('Wypłycanie sieci')
+
+    # wczytanie danych
+    file = open(path_to_assessing_data, "r")
+    json_string = file.read()
+    layers_accuracy_dict = json.loads(json_string)
+
+    accuracy_mean = []
+    loss_mean = []
+
+    for i in range(1, len(layers_accuracy_dict)):
+        accuracy = layers_accuracy_dict[str(i)]['accuracy']
+        loss = layers_accuracy_dict[str(i)]['loss']
+        accuracy_mean.append(np.mean(accuracy[:-2]))
+        loss_mean.append(np.mean(loss[1:]))
+
+    print(accuracy_mean)
+    print(loss_mean)
+
+    margins = 0.015  # 1.5% dokładności
+    last_effective_layer = 1
+    layers_to_remove = []
+    for i in range(2, len(layers_accuracy_dict)+1):           # Znalezienie warstw do usunięcia
+        present_layer = str(i)
+        accuracy_diference = layers_accuracy_dict[present_layer]['accuracy'] -\
+                             layers_accuracy_dict[str(last_effective_layer)]['accuracy']
+
+        if accuracy_diference < margins:
+            layers_to_remove.append(i)
+        else:
+            last_effective_layer += 1
+
+    print('The following convolutional layers and their dependencies(ReLU, batch normalization)will be removed:',
+          layers_to_remove, '\n')
+
+    # shallowed_model = load_model('Zapis modelu/19-03-11 20-21/weights-improvement-265-22.78.hdf5',
+    #                              custom_objects={'loss_for_knowledge_distillation': loss_for_knowledge_distillation})
+
+    # wczytanie sieci
+    original_model = load_model(path_to_original_model)
+    original_model = NNModifier.rename_choosen_conv_layers(original_model, [x+1 for x in layers_to_remove])
+    shallowed_model = NNModifier.remove_chosen_conv_layers(original_model, layers_to_remove)
+    return shallowed_model
+
+
+
 
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
-    assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=14)
+    # assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)
 
     model = load_model(path_to_original_model)
     model_hash = NNHasher.hash_model(model)
     K.clear_session()
 
     shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
-                                      path_to_assessing_data=str(model_hash))
+                                      path_to_assessing_data=str(model_hash)+'v2')
 
     path_to_shallowed_model = 'temp/model.hdf5'
     save_model(shallowed_model, filepath=path_to_shallowed_model)

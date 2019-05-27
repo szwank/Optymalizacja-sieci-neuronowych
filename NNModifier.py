@@ -271,7 +271,12 @@ class NNModifier:
         return json_object
 
     @staticmethod
-    def split_last_conv_block(model, filters_in_grup_after_division, kernel_dimension=(3, 3), pading='same'):
+    def split_last_conv_block(model, filters_in_grup_after_division=0, split_on_x_new_filters=0, kernel_dimension=(3, 3), pading='same'):
+        if filters_in_grup_after_division == 0 and split_on_x_new_filters == 0:
+            raise ValueError('Nie podano w jaki sposób podzielić warstwe konwolusyjną. Podaj filters_in_grup_after_division lub split_on_x_new_filters')
+        if filters_in_grup_after_division is not 0 and split_on_x_new_filters is not 0:
+            raise ValueError(
+                'Podaj tylko jeden sposb podziau. Podaj filters_in_grup_after_division lub split_on_x_new_filters')
 
         output_layers = []
 
@@ -283,16 +288,26 @@ class NNModifier:
                 conv_weights = model.layers[-i].get_weights()
                 conv_weights[0] = np.swapaxes(conv_weights[0], 0, 3)
                 conv_weights[0] = np.swapaxes(conv_weights[0], 1, 2)
+                number_of_filters = model.layers[-i].filters
                 if 'batch_normalization' in model.layers[-i+1].name:
                     batch_normalization_weights = model.layers[-i+1].get_weights()
 
-                for j in range(int(conv_weights[0].shape[0]/filters_in_grup_after_division)):
-                    x = Conv2D(filters_in_grup_after_division, kernel_dimension, padding=pading,
-                               name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
-                    x = BatchNormalization(name=batchnormalization_name_first_part + str(j))(x)
-                    x = ReLU(name=relu_name_first_part + str(j))(x)
-                    output_layers.append(x)
-                break
+                if filters_in_grup_after_division is not 0:
+                    for j in range(int(conv_weights[0].shape[0]/filters_in_grup_after_division)):
+                        x = Conv2D(filters_in_grup_after_division, kernel_dimension, padding=pading,
+                                   name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
+                        x = BatchNormalization(name=batchnormalization_name_first_part + str(j))(x)
+                        x = ReLU(name=relu_name_first_part + str(j))(x)
+                        output_layers.append(x)
+                    break
+                else:
+                    for j in range(split_on_x_new_filters):
+                        x = Conv2D(int(number_of_filters/split_on_x_new_filters), kernel_dimension, padding=pading,
+                                   name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
+                        x = BatchNormalization(name=batchnormalization_name_first_part + str(j))(x)
+                        x = ReLU(name=relu_name_first_part + str(j))(x)
+                        output_layers.append(x)
+                    break
 
         if output_layers is []:
             raise TypeError("Model don't have convolutional layer")
@@ -306,8 +321,12 @@ class NNModifier:
             layer_name = layer.name
             if conv_layer_name_first_part in layer_name:
                 conv_layer_number = int(layer_name[-1])
-                start_index = conv_layer_number * filters_in_grup_after_division
-                end_index = (conv_layer_number + 1) * filters_in_grup_after_division
+                if filters_in_grup_after_division is not 0:
+                    start_index = conv_layer_number * filters_in_grup_after_division
+                    end_index = (conv_layer_number + 1) * filters_in_grup_after_division
+                else:
+                    start_index = conv_layer_number * int(number_of_filters / split_on_x_new_filters)
+                    end_index = (conv_layer_number + 1) * int(number_of_filters / split_on_x_new_filters)
                 layer_weights = conv_weights[0][start_index:end_index]
                 layer_weights = np.swapaxes(layer_weights, 0, 3)
                 layer_weights = np.swapaxes(layer_weights, 1, 2)
@@ -318,8 +337,12 @@ class NNModifier:
 
             if batchnormalization_name_first_part in layer_name:
                 batch_normalization_layer_number = int(layer_name[-1])
-                start_index = batch_normalization_layer_number * filters_in_grup_after_division
-                end_index = (batch_normalization_layer_number + 1) * filters_in_grup_after_division
+                if filters_in_grup_after_division is not 0:
+                    start_index = batch_normalization_layer_number * filters_in_grup_after_division
+                    end_index = (batch_normalization_layer_number + 1) * filters_in_grup_after_division
+                else:
+                    start_index = batch_normalization_layer_number * int(number_of_filters / split_on_x_new_filters)
+                    end_index = (batch_normalization_layer_number + 1) * int(number_of_filters / split_on_x_new_filters)
                 layer_weights = []
                 for narray in batch_normalization_weights:
                     layer_weights.append(narray[start_index:end_index])

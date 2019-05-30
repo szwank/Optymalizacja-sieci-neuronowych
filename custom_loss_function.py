@@ -16,7 +16,7 @@ def knowledge_distillation_loos(alpha_const, temperature):
 
         y_soft_pred = K.softmax(logits_pred / temperature)
 
-        return categorical_crossentropy_loss(y_true, y_pred) + alpha_const * categorical_crossentropy_loss(y_soft, y_soft_pred)
+        return (1-alpha_const) * categorical_crossentropy_loss(y_true, y_pred) + alpha_const * categorical_crossentropy_loss(y_soft, y_soft_pred)
     return knowledge_distillation
 
 

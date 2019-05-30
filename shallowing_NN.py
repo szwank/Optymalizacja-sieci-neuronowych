@@ -68,19 +68,19 @@ def add_score_to_file(score, file_name):
     file.write(json_string)
     file.close()
 
-def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
+def assesing_conv_layers(path_to_model, start_from_layer= 1, batch_size=256):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
     print('Testowanie warstw konwolucyjnych')
 
-    model = load_model(path_to_model)
-    model_hash = NNHasher.hash_model(model)
-    model.summary()
+    original_model = load_model(path_to_model)
+    original_model_hash = NNHasher.hash_model(original_model)
+    original_model.summary()
 
-    model_architecture = model.to_json(indent=4)
+    model_architecture = original_model.to_json(indent=4)
     model_architecture = json.loads(model_architecture)
 
-    del(model)
+    del original_model
 
     count_conv_layer = 0      # Licznik warstw konwolucyjnych.
     number_of_layers_in_model = len(model_architecture["config"]["layers"])
@@ -92,8 +92,8 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
 
             if start_from_layer <= i:
                 print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
-                model = load_model(path_to_model)
-                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i+2)  # i + 2 ponieważ trzeba uwzględnić
+                original_model = load_model(path_to_model)
+                cutted_model = NNModifier.cut_model_to(original_model, cut_after_layer=i+2)  # i + 2 ponieważ trzeba uwzględnić
                                                                                 # jeszcze warstwę normalizującą i ReLU
 
                 for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
@@ -105,12 +105,12 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, BATCH_SIZE=256):
                 cutted_model.load_weights(path_to_model, by_name=True)
                 cutted_model.summary()
 
-                del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
+                del original_model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
 
-                scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
+                scores = train_and_asses_network(cutted_model, batch_size, count_conv_layer)
 
                 scores.append(count_conv_layer)
-                add_score_to_file(score=scores, file_name=model_hash)
+                add_score_to_file(score=scores, file_name=original_model_hash)
 
                 # tf.reset_default_graph()
                 K.clear_session()
@@ -284,7 +284,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     FileManager.create_folder(scierzka_logow)
 
     # Callback
-    learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+    learning_rate_regulation = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.0002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
@@ -371,7 +371,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
-    # assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)
+    assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)
 
     model = load_model(path_to_original_model)
     model_hash = NNHasher.hash_model(model)

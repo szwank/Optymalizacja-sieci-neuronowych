@@ -6,6 +6,7 @@ from keras import regularizers
 from keras.models import Model, model_from_json
 from keras.utils import plot_model
 from CreateNN import CreateNN
+from NNLoader import NNLoader
 from Create_NN_graph import Create_NN_graph
 from NNSaver import NNSaver
 import numpy as np
@@ -380,6 +381,122 @@ class NNModifier:
         model.load_weights('temp/model.h5', by_name=True)
 
         return model
+    @staticmethod
+    def remove_chosen_filters_from_model(model, chosen_filters, filters_in_grup):
+        model_dictionary = json.loads(model.to_json())
+        number_of_layers = len(model.layers)
+        model_weights = []
+        last_conv_layer = 0
+        number_of_conv_layer = 0
+
+        for layer_number, layer in enumerate(model.layers):
+            if 'conv2d' in layer.name:
+                number_of_conv_layer += 1
+                layer_index = int(layer.name.split('_')[-1])
+                if layer_index in chosen_filters.keys():
+
+                    if number_of_conv_layer - 1 > last_conv_layer or model_weights == []:
+                        actual_conv_layer_weights = layer.get_weights()
+                        actual_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(actual_conv_layer_weights[0])
+                    else:
+                        second_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
+                            second_conv_layer_weights[0])
+                        actual_conv_layer_weights = second_conv_layer_weights
+
+                    # Sprawdzanie czy niektóre warstwy istnieją po tej konwolucyjnej
+                    batch_normalization_layer_is_after_conv_layer = False
+                    for i in range(1, 2):
+                        if 'batch_normalization' in model.layers[layer_number+i].name:
+                            batch_normalization_layer_is_after_conv_layer = True
+                            batch_normalization_weights = model.layers[layer_number + i].get_weights()
+                            break
+
+                    next_conv_layer_exist = False
+                    for i in range(layer_number+1, number_of_layers):
+                        if 'conv2d' in model.layers[i].name:
+                            next_conv_layer_exist = True
+                            second_conv_layer_weights = model.layers[i].get_weights()
+                            second_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
+                                second_conv_layer_weights[0])
+                            break
+
+                    # właściwe usuwanie wag
+                    for removed_weights_x_times, filter_number in enumerate(chosen_filters[layer_index]):
+                        start_index = filter_number * filters_in_grup - removed_weights_x_times * filters_in_grup
+                        end_index = start_index + filters_in_grup
+
+                        actual_conv_layer_weights = NNModifier.remove_chosen_weights(weights=actual_conv_layer_weights,
+                                                                                     start_index=start_index,
+                                                                                     end_index=end_index)
+                        model_dictionary['config']['layers'][layer_number]['config']['filters'] -= filters_in_grup
+
+
+                        if batch_normalization_layer_is_after_conv_layer:
+                            batch_normalization_weights = NNModifier.remove_chosen_weights(batch_normalization_weights,
+                                                                                           start_index=start_index,
+                                                                                           end_index=end_index)
+
+                        if next_conv_layer_exist:
+                            second_conv_layer_weights[:1] = NNModifier.remove_chosen_weights(second_conv_layer_weights[:1],
+                                                                                             start_index=start_index,
+                                                                                             end_index=end_index,
+                                                                                             axis=1)
+
+                    actual_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
+                        actual_conv_layer_weights[0])
+                    if number_of_conv_layer - 1 > last_conv_layer or model_weights == []:
+                        model_weights.extend(actual_conv_layer_weights)
+                    else:
+                        model_weights[-2] = actual_conv_layer_weights[0]
+                        model_weights[-1] = actual_conv_layer_weights[1]
+
+                    if batch_normalization_layer_is_after_conv_layer:
+                        model_weights.extend(batch_normalization_weights)
+
+                    if next_conv_layer_exist:
+                        second_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
+                            second_conv_layer_weights[0])
+                        model_weights.extend(second_conv_layer_weights)
+
+                last_conv_layer = number_of_conv_layer
+
+            conv_layers_left = False
+            for i in range(layer_number+1, number_of_layers):
+                if 'conv' in model.layers[i].name:
+                    conv_layers_left = True
+                    break
+
+            if not conv_layers_left:
+                for i in range(layer_number+1, number_of_layers):
+                    layer_weights = model.layers[i].get_weights()
+                    model_weights.extend(layer_weights)
+                break
+
+        model = model_from_json(json.dumps(model_dictionary))
+        # w = model.get_weights()
+        # for i in range(len(w)):
+        #     print(np.array_equal(w[i].shape, model_weights[i].shape))
+        model = NNLoader.load_weights_from_list(model, model_weights)
+        return model
+
+    @staticmethod
+    def remove_chosen_weights(weights, start_index, end_index, axis=0):
+        """wagi powinny mieć elementy w następującej kolejności:[ilość filtrów, ilość cech wchodzących, wymiar filtra,
+        wymiar filtra]"""
+        for i, type_weights in enumerate(weights):
+            if len(type_weights.shape) > 1:
+                weights[i] = np.delete(type_weights, range(start_index, end_index), axis=axis)
+            else:
+                weights[i] = np.delete(type_weights, range(start_index, end_index), axis=0)
+        return weights
+
+
+    @staticmethod
+    def swap_axes_in_convonutional_weights(weights):
+        weights = np.swapaxes(weights, 0, 3)
+        weights = np.swapaxes(weights, 1, 2)
+        return weights
+
 
 
 

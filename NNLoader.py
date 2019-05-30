@@ -92,3 +92,21 @@ class NNLoader:
 
         return model.load_weights(os.path.join(directory, list_of_files[position_of_best]))
 
+    @staticmethod
+    def load_weights_from_list(model, weights):
+        actual_weight_index = 0
+
+        for layer in model.layers:
+            weights_from_model = layer.get_weights()
+            positions_to_take = len(weights_from_model)
+
+            if positions_to_take > 0:
+                start_index = actual_weight_index
+                end_index = start_index + positions_to_take
+                weights_for_layer = weights[start_index:end_index]
+                layer.set_weights(weights_for_layer)
+                actual_weight_index = end_index
+
+        return model
+
+

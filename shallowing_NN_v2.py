@@ -17,6 +17,7 @@ import json
 from custom_loss_function import knowledge_distillation_loos
 from custom_metrics import mean_accuracy
 from utils.File_menager import FileManager
+from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
 from custom_loss_function import loss_for_many_clasificators
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 
@@ -243,28 +244,118 @@ def shallow_network(path_to_original_model, path_to_assessing_data):
 
     margins = 0.015  # 1.5% dokładności
     last_effective_layer = 1
-    layers_to_remove = []
-    for i in range(2, len(layers_accuracy_dict)+1):           # Znalezienie warstw do usunięcia
-        present_layer = str(i)
-        accuracy_diference = layers_accuracy_dict[present_layer]['accuracy'] -\
-                             layers_accuracy_dict[str(last_effective_layer)]['accuracy']
+    filters_in_layers_to_remove = {}
+    for conv_layer_number in range(1, len(layers_accuracy_dict)):
+        filters_to_remove = []
+        for number_of_grup_of_filters in range(len(layers_accuracy_dict[str(conv_layer_number)]['accuracy'])):
+            if accuracy_mean[conv_layer_number-1] >\
+                    layers_accuracy_dict[str(conv_layer_number)]['accuracy'][number_of_grup_of_filters] + margins:
+                filters_to_remove.append(number_of_grup_of_filters)
 
-        if accuracy_diference < margins:
-            layers_to_remove.append(i)
-        else:
-            last_effective_layer += 1
+        filters_in_layers_to_remove.update({conv_layer_number: filters_to_remove})
 
-    print('The following convolutional layers and their dependencies(ReLU, batch normalization)will be removed:',
-          layers_to_remove, '\n')
+    print(filters_in_layers_to_remove)
 
-    # shallowed_model = load_model('Zapis modelu/19-03-11 20-21/weights-improvement-265-22.78.hdf5',
-    #                              custom_objects={'loss_for_knowledge_distillation': loss_for_knowledge_distillation})
-
-    # wczytanie sieci
     original_model = load_model(path_to_original_model)
-    original_model = NNModifier.rename_choosen_conv_layers(original_model, [x+1 for x in layers_to_remove])
-    shallowed_model = NNModifier.remove_chosen_conv_layers(original_model, layers_to_remove)
+    shallowed_model = NNModifier.remove_chosen_filters_from_model(original_model, filters_in_layers_to_remove, 2)
     return shallowed_model
+
+def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
+    """Metoda Dokonująca transferu danych"""
+
+    print('Knowledge distillation')
+
+    # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
+    scierzka_zapisu = 'Zapis modelu/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
+    FileManager.create_folder(scierzka_zapisu)
+
+    # Ustawienie ścieżki logów i stworzenie folderu jeżeli nie istnieje
+    scierzka_logow = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
+    FileManager.create_folder(scierzka_logow)
+
+    # Callback
+    learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+    tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
+    modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
+        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
+        save_best_only=True, period=7, save_weights_only=False)
+    earlyStopping = EarlyStopping(monitor='val_loss', patience=25)  # zatrzymanie uczenia sieci jeżeli
+                                                                                    # dokładność się nie zwiększa
+
+    temperature = 6
+
+    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+
+    generator = ImageDataGenerator(rescale=1. / 255,
+                                   samplewise_center=True,  # set each sample mean to 0
+                                   samplewise_std_normalization=True  # divide each input by its std
+                                   )
+
+    training_gen = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_train, y_train, batch_size=64),
+                                                            path_to_weights=dir_to_original_model,
+                                                            shuffle=True)
+    validation_gen = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_validation, y_validation, batch_size=8),
+                                                              path_to_weights=dir_to_original_model,
+                                                              shuffle=True)
+
+    # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
+    #                            dir_to_weights=dir_to_original_model, **params)
+
+    K.clear_session()
+
+    shallowed_model = load_model(path_to_shallowed_model)
+    # shallowed_model = CreateNN.get_shallowed_model()
+    shallowed_model.layers.pop()
+
+    logits = shallowed_model.layers[-1].output
+    probabilieties = Softmax()(logits)
+
+    # logits_T = Lambda(lambda x: x/temperature)(logits)
+    # probabilieties_T = Softmax()(logits_T)
+
+    outputs = concatenate([probabilieties, logits])
+
+    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
+
+    # shallowed_model.load_weights(path_to_original_model, by_name=True)
+    # shallowed_model.load_weights('Zapis modelu/19-05-08 18-39/weights-improvement-28-1.75.hdf5', by_name=True)
+    shallowed_model.summary()
+
+    # shallowed_model.load_weights(dir_to_original_model, by_name=True)
+    optimizer_SGD = SGD(lr=0.1, momentum=0.9, nesterov=True)
+    shallowed_model.compile(optimizer=optimizer_SGD,
+                            loss=knowledge_distillation_loos(alpha_const=0.95, temperature=temperature),
+                            metrics=[accuracy,
+                                     categorical_crossentropy_metric,
+                                     soft_categorical_crossentrophy(temperature)])
+
+    shallowed_model.fit_generator(generator=training_gen,
+                                  validation_data=validation_gen,
+                                  use_multiprocessing=False,
+                                  workers=4,
+                                  epochs=1000,
+                                  callbacks=[tensorBoard, modelCheckPoint, learning_rate_regulation, earlyStopping],
+                                  initial_epoch=0,
+                                  max_queue_size=1
+                                  )
+
+    # shallowed_model.save('Zapis modelu/shallowed_model.h5')
+
+
+    # original_model.compile(SGD, loss='categorical_crossentropy', metrics=['accuracy'])
+    # shallowed_model = Model(inputs=shallowed_model.inputs, outputs=shallowed_model.outputs[0])
+    shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=[accuracy,
+                                     categorical_crossentropy_metric])
+    Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
+    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
+    test_generator = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_test, y_test, batch_size=128),
+                                                              path_to_weights=dir_to_original_model,
+                                                              shuffle=True)
+
+    scores = shallowed_model.evaluate_generator(test_generator)
+    print(scores)
+    print('Test loss:', scores[2])
+    print('Test accuracy:', scores[1])
 
 
 

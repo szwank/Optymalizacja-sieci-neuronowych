@@ -1,5 +1,5 @@
 from keras.preprocessing.image import ImageDataGenerator
-from keras.layers import Lambda, concatenate
+from keras.layers import concatenate
 from keras.models import Model, load_model, save_model
 from keras.optimizers import SGD
 from keras.layers import Softmax
@@ -8,7 +8,7 @@ from keras.callbacks import ReduceLROnPlateau, TensorBoard, ModelCheckpoint, Ear
 import numpy as np
 import datetime
 import os
-from NNModifier import NNModifier
+from NNModifier import NNModifier, freeze_all_layers_weights
 from NNLoader import NNLoader
 from Create_NN_graph import Create_NN_graph
 from NNHasher import NNHasher
@@ -17,7 +17,7 @@ import json
 from custom_loss_function import knowledge_distillation_loos
 from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
 from utils.File_menager import FileManager
-import tensorflow as tf
+
 
 def check_weights_was_changed(old_model, new_model):
     old_weights = old_model.get_weights()
@@ -46,10 +46,9 @@ def set_weights_as_ones(model):
     model.set_weights(weights)
 
 
-def add_score_to_file(score, file_name):
+def add_score_to_file(score, conv_layer_number, file_name):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
-    conv_layer_number = score[2]
     loss = score[0]
     accuracy = score[1]
 
@@ -68,7 +67,12 @@ def add_score_to_file(score, file_name):
     file.write(json_string)
     file.close()
 
-def assesing_conv_layers(path_to_model, start_from_layer= 1, batch_size=256):
+
+def check_if_is_conv_layer(layer: dict):
+    return layer["class_name"] == 'Conv2D'
+
+
+def assess_conv_layers(path_to_model, assess_function_conv_layers,  start_from_layer=1, batch_size=256):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
     print('Testowanie warstw konwolucyjnych')
@@ -77,45 +81,61 @@ def assesing_conv_layers(path_to_model, start_from_layer= 1, batch_size=256):
     original_model_hash = NNHasher.hash_model(original_model)
     original_model.summary()
 
-    model_architecture = original_model.to_json(indent=4)
-    model_architecture = json.loads(model_architecture)
+    model_architecture = convert_model_to_dict(original_model)
 
     del original_model
 
-    count_conv_layer = 0      # Licznik warstw konwolucyjnych.
-    number_of_layers_in_model = len(model_architecture["config"]["layers"])
+    conv_layer_counter = 0
+    for i, actual_layer in enumerate(model_architecture["config"]["layers"]):
 
-    for i in range(number_of_layers_in_model):
-
-        if model_architecture["config"]["layers"][i]["class_name"] == 'Conv2D':     # Sprawdzenie czy dana warstwa jest konwolucyjna
-            count_conv_layer += 1     # Zwiekszenie licznika
+        if check_if_is_conv_layer(actual_layer):
+            conv_layer_counter += 1
 
             if start_from_layer <= i:
-                print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
-                original_model = load_model(path_to_model)
-                cutted_model = NNModifier.cut_model_to(original_model, cut_after_layer=i+2)  # i + 2 ponieważ trzeba uwzględnić
-                                                                                # jeszcze warstwę normalizującą i ReLU
+                print('Testowanie', conv_layer_counter, 'warstw konwolucyjnych w sieci')
+                scores = asses_chosen_conv_layer(path_to_original_model=path_to_model,
+                                                 number_layer_of_assessed_conv_layer=i,
+                                                 batch_size=batch_size,
+                                                 model_ID=conv_layer_counter)
 
-                for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
-                    layer.trainable = False
+                add_score_to_file(score=scores, conv_layer_number=conv_layer_counter, file_name=original_model_hash)
 
-                cutted_model = NNModifier.add_classifier_to_end(cutted_model)
-
-                # wczytanie wag do sieci
-                cutted_model.load_weights(path_to_model, by_name=True)
-                cutted_model.summary()
-
-                del original_model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
-
-                scores = train_and_asses_network(cutted_model, batch_size, count_conv_layer)
-
-                scores.append(count_conv_layer)
-                add_score_to_file(score=scores, file_name=original_model_hash)
-
-                # tf.reset_default_graph()
                 K.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
+
+
+def asses_chosen_conv_layer(path_to_original_model: str,
+                            number_layer_of_assessed_conv_layer: int,
+                            batch_size: int,
+                            model_ID):
+    cut_model = prepare_model_for_assessing(number_layer_of_assessed_conv_layer, path_to_original_model)
+    scores = train_and_asses_network(cut_model, batch_size, model_ID=model_ID)
+    return scores
+
+
+def prepare_model_for_assessing(number_layer_of_assessed_conv_layer: int, path_to_original_model: str):
+    original_model = load_model(path_to_original_model)
+    cut_model = modify_model_for_assess_conv_layer(original_model, number_layer_of_assessed_conv_layer)
+    cut_model.load_weights(path_to_original_model, by_name=True)
+    cut_model.summary()
+    del original_model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
+    return cut_model
+
+
+def modify_model_for_assess_conv_layer(original_model: Model, number_layer_of_assessed_conv_layer: int):
+    cut_model = NNModifier.cut_model_to(original_model, cut_after_layer=number_layer_of_assessed_conv_layer + 2)  # i + 2 ponieważ trzeba uwzględnić
+                                                                                # jeszcze warstwę normalizującą i ReLU
+    NNModifier.freeze_all_layers_weights(cut_model)
+    cut_model = NNModifier.add_classifier_to_end(cut_model)
+    return cut_model
+
+
+def convert_model_to_dict(original_model):
+    model_architecture = original_model.to_json(indent=4)
+    model_architecture = json.loads(model_architecture)
+    return model_architecture
+
 
 def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     """Funkcja trenująca i oceniająca skuteczność sieci"""
@@ -371,7 +391,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
-    assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)
+    assess_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)
 
     model = load_model(path_to_original_model)
     model_hash = NNHasher.hash_model(model)

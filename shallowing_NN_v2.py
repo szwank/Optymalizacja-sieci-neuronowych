@@ -46,7 +46,7 @@ def add_score_to_file(score, file_name, number_of_trained_clasificator):
     file.close()
 
 
-def assesing_conv_layers(path_to_model, start_from_layer=1, BATCH_SIZE=256):
+def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
     print('Testowanie warstw konwolucyjnych')
@@ -68,13 +68,13 @@ def assesing_conv_layers(path_to_model, start_from_layer=1, BATCH_SIZE=256):
         if model_architecture["config"]["layers"][i]["class_name"] == 'Conv2D':     # Sprawdzenie czy dana warstwa jest konwolucyjna
             count_conv_layer += 1     # Zwiekszenie licznika
 
-            if start_from_layer <= i:
+            if start_from_conv_layer <= count_conv_layer:
                 print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
                 model = load_model(path_to_model)
                 cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i+2)  # i + 2 ponieważ trzeba uwzględnić
                                                                                 # jeszcze warstwę normalizującą i ReLU
 
-                cutted_model = NNModifier.split_last_conv_block(cutted_model, split_on_x_new_filters=32)
+                cutted_model = NNModifier.split_last_conv_block(cutted_model, filters_in_grup_after_division=2)
                 cutted_model.summary()
 
                 for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
@@ -90,17 +90,15 @@ def assesing_conv_layers(path_to_model, start_from_layer=1, BATCH_SIZE=256):
                 # save_model(cutted_model, 'temp/model.h5')
                 # for i in range(32):
                 #     cutted_model = load_model('temp/model.h5')
-                scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer, number_of_trained_clasificator=i)
-                #
-                scores.append(count_conv_layer)
-                add_score_to_file(score=scores, file_name=model_hash+'v2', number_of_trained_clasificator=0)
+                scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
+                add_score_to_file(score=scores, file_name=model_hash+'v2', number_of_trained_clasificator=count_conv_layer)
 
                 # tf.reset_default_graph()
                 K.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
 
-def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID, number_of_trained_clasificator):
+def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     number_of_model_outputs = len(cutted_model.outputs)
     optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
     # optimizer = Adam(lr=0.1, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
@@ -220,27 +218,30 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID, number_of_traine
     print(scores)
     return scores
 
-def shallow_network(path_to_original_model, path_to_assessing_data):
+def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of_filters: str, path_to_assessing_data_full_layers: str="1"):
     """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
 
     print('Wypłycanie sieci')
 
     # wczytanie danych
-    file = open(path_to_assessing_data, "r")
+    file = open(path_to_assessing_data_group_of_filters, "r")
     json_string = file.read()
     layers_accuracy_dict = json.loads(json_string)
+    file.close()
 
-    accuracy_mean = []
-    loss_mean = []
+    accuracy_mean_of_group_of_filters = []
+    loss_mean_of_group_of_filters = []
 
     for i in range(1, len(layers_accuracy_dict)):
         accuracy = layers_accuracy_dict[str(i)]['accuracy']
         loss = layers_accuracy_dict[str(i)]['loss']
-        accuracy_mean.append(np.mean(accuracy[:-2]))
-        loss_mean.append(np.mean(loss[1:]))
+        accuracy_mean_of_group_of_filters.append(np.mean(accuracy[:-2]))
+        loss_mean_of_group_of_filters.append(np.mean(loss[1:]))
 
-    print(accuracy_mean)
-    print(loss_mean)
+    print(accuracy_mean_of_group_of_filters)
+    print(loss_mean_of_group_of_filters)
+
+
 
     margins = 0.015  # 1.5% dokładności
     last_effective_layer = 1
@@ -248,7 +249,7 @@ def shallow_network(path_to_original_model, path_to_assessing_data):
     for conv_layer_number in range(1, len(layers_accuracy_dict)):
         filters_to_remove = []
         for number_of_grup_of_filters in range(len(layers_accuracy_dict[str(conv_layer_number)]['accuracy'])):
-            if accuracy_mean[conv_layer_number-1] >\
+            if accuracy_mean_of_group_of_filters[conv_layer_number-1] >\
                     layers_accuracy_dict[str(conv_layer_number)]['accuracy'][number_of_grup_of_filters] + margins:
                 filters_to_remove.append(number_of_grup_of_filters)
 
@@ -363,19 +364,19 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
-    # assesing_conv_layers(path_to_model=path_to_original_model, start_from_layer=0)
+    assesing_conv_layers(path_to_model=path_to_original_model, start_from_conv_layer=1)
 
     model = load_model(path_to_original_model)
     model_hash = NNHasher.hash_model(model)
     K.clear_session()
 
     shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
-                                      path_to_assessing_data=str(model_hash)+'v2')
+                                      path_to_assessing_data_group_of_filters=str(model_hash) + 'v2')
 
-    path_to_shallowed_model = 'temp/model.hdf5'
-    save_model(shallowed_model, filepath=path_to_shallowed_model)
-    K.clear_session()
-
-    knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
-                           dir_to_original_model=path_to_original_model)
-
+    # path_to_shallowed_model = 'temp/model.hdf5'
+    # save_model(shallowed_model, filepath=path_to_shallowed_model)
+    # K.clear_session()
+    #
+    # knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
+    #                        dir_to_original_model=path_to_original_model)
+    #

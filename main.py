@@ -18,7 +18,7 @@ if __name__ == '__main__':
         keras.backend.clear_session()
 
     # Optymalizacja sieci
-    shallowing_NN.assesing_conv_layers(path_to_model=path_to_model)
+    shallowing_NN.assess_conv_layers(path_to_model=path_to_model)
     shallowed_model = shallowing_NN.shallow_network('Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5')
     shallowing_NN.knowledge_distillation(shallowed_model)
 

@@ -141,41 +141,9 @@ class NNModifier:
 
         return model
 
-
     @staticmethod
     def remove_last_layer(model):
         return Model(inputs=model.inputs, outputs=model.layers[-2].output)
-
-
-    @staticmethod
-    def add_loss_layer_for_knowledge_distillation(model, num_classes, alpha=0.5, T=1):
-        """Dodanie warstwy obliczającej loss sieci neuronowej. Warstwa dodawana jest na koniec sieci neuronowej.
-        Dodatkowo dodawane są dwa dodatkowe wejścia ground_truth, logits. Są to odpowiedzi sieci orginalnej oraz jej
-        wartości sprzed wejścia na softmax. Kolejnośc wejśc w nowej sieci: ground_truth, logits, wejście do
-        zoptymalizowanej sieci.
-
-        # Argumenty:
-        model- model sieci do której ma być dodana warstwa
-        alfa- parametr wyliczania lossu. Waga odpowiadająca za logitsy
-        T- temperatura Logitsów
-
-        Zwraca:
-        model sieci.
-        """
-
-        ground_truth = Input(shape=(10, ), name='ground_truth')  # Dodatkowej wejście na wyjścia z orginalnej sieci(SoftMax)
-        logits = Input(shape=(10, ), name='logits')  # Dodatkowe wejście na wyjścia z orginalnej sieci(warstwa przed SoftMax)
-
-        # Warstwa obliczająca loss dla procesu knowledge distillation
-        loss = Lambda(CreateNN.loss_for_knowledge_distillation_layer, name='loss')([ground_truth, logits,
-                                                                                    model.layers[-1].output,
-                                                                                    model.layers[-2].output])
-        # label = Softmax(name='test')(model.layers[-2].output)
-
-        model = Model(inputs=(ground_truth, logits, model.input),  outputs=loss)  # dodanie warstwy do modelu
-        Create_NN_graph.create_NN_graph(model, name='model_with_loss_layer')
-        return model
-
 
     @staticmethod
     def remove_chosen_layer_from_json_string(json_object, layer_number):
@@ -246,16 +214,16 @@ class NNModifier:
         json_model = model.to_json(indent=4)  # Przekonwertowanie modelu na słownik
         json_object = json.loads(json_model)
 
-        witch_conv = 0
+        with_conv = 0
         number_of_layers = len(json_object["config"]["layers"])
 
         for layer_number in range(number_of_layers):  # Iteracja po warstwach w modelu
             if json_object["config"]["layers"][layer_number]["class_name"] == 'Conv2D':     # Sprawdzenie czy warstwa jest konwolucyjna
-                if witch_conv in chosen_layer_list:  # sprawdzenie czy warstwa jest na liście warstw do usunięcia
+                if with_conv in chosen_layer_list:  # sprawdzenie czy warstwa jest na liście warstw do usunięcia
 
                     # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
                     json_object = NNModifier.add_phrase_to_layer_name(json_object, layer_number, '_changed')
-                witch_conv += 1
+                with_conv += 1
 
         json_model = json.dumps(json_object)  # przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
         model = model_from_json(json_model)
@@ -272,10 +240,11 @@ class NNModifier:
         return json_object
 
     @staticmethod
-    def split_last_conv_block(model, filters_in_grup_after_division=0, split_on_x_new_filters=0, kernel_dimension=(3, 3), pading='same'):
-        if filters_in_grup_after_division == 0 and split_on_x_new_filters == 0:
-            raise ValueError('Nie podano w jaki sposób podzielić warstwe konwolusyjną. Podaj filters_in_grup_after_division lub split_on_x_new_filters')
-        if filters_in_grup_after_division is not 0 and split_on_x_new_filters is not 0:
+    def split_last_conv_block(model, filters_in_grup_after_division=None, split_on_x_new_filters=None, kernel_dimension=(3, 3), pading='same'):
+        if filters_in_grup_after_division in None and split_on_x_new_filters is None:
+            raise ValueError(
+                'Nie podano w jaki sposób podzielić warstwe konwolusyjną. Podaj filters_in_grup_after_division lub split_on_x_new_filters')
+        if filters_in_grup_after_division is None and split_on_x_new_filters is None:
             raise ValueError(
                 'Podaj tylko jeden sposb podziau. Podaj filters_in_grup_after_division lub split_on_x_new_filters')
 
@@ -293,7 +262,7 @@ class NNModifier:
                 if 'batch_normalization' in model.layers[-i+1].name:
                     batch_normalization_weights = model.layers[-i+1].get_weights()
 
-                if filters_in_grup_after_division is not 0:
+                if filters_in_grup_after_division is not None:
                     for j in range(int(conv_weights[0].shape[0]/filters_in_grup_after_division)):
                         x = Conv2D(filters_in_grup_after_division, kernel_dimension, padding=pading,
                                    name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
@@ -322,7 +291,7 @@ class NNModifier:
             layer_name = layer.name
             if conv_layer_name_first_part in layer_name:
                 conv_layer_number = int(layer_name[-1])
-                if filters_in_grup_after_division is not 0:
+                if filters_in_grup_after_division is not None:
                     start_index = conv_layer_number * filters_in_grup_after_division
                     end_index = (conv_layer_number + 1) * filters_in_grup_after_division
                 else:
@@ -338,7 +307,7 @@ class NNModifier:
 
             if batchnormalization_name_first_part in layer_name:
                 batch_normalization_layer_number = int(layer_name[-1])
-                if filters_in_grup_after_division is not 0:
+                if filters_in_grup_after_division is not None:
                     start_index = batch_normalization_layer_number * filters_in_grup_after_division
                     end_index = (batch_normalization_layer_number + 1) * filters_in_grup_after_division
                 else:
@@ -497,12 +466,7 @@ class NNModifier:
         weights = np.swapaxes(weights, 1, 2)
         return weights
 
-
-
-
-
-
-
-
-
-
+    @staticmethod
+    def freeze_all_layers_weights(cutted_model):
+        for layer in cutted_model.layers:
+            layer.trainable = False

@@ -22,6 +22,33 @@ from custom_loss_function import loss_for_many_clasificators
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 
 
+def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
+    """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
+
+    conv_layer_number = number_of_trained_clasificator
+    middle_position = int((len(score) - 1) / 2) + 1
+    loss = score[:middle_position]
+    accuracy = score[middle_position:]
+
+    if os.path.exists(file_name):
+        file = open(file_name, "r")
+        json_string = file.read()
+        dictionary = json.loads(json_string)
+        if str(conv_layer_number) in dictionary.keys():
+            subordinate_dictionary = dictionary[str(conv_layer_number)]['loss'].extend(loss)
+            subordinate_dictionary = dictionary[str(conv_layer_number)]['accuracy'].extend(accuracy)
+        else:
+            subordinate_dictionary = {str(conv_layer_number): {'loss': loss[1:], 'accuracy': accuracy[:-2]}}
+            dictionary.update(subordinate_dictionary)
+        file.close()
+    else:
+        dictionary = {str(conv_layer_number): {'loss': loss[1:], 'accuracy': accuracy[:-2]}}
+
+    file = open(file_name, "w")
+    json_string = json.dumps(dictionary)
+    file.write(json_string)
+    file.close()
+
 def add_score_to_file(score, file_name, number_of_trained_clasificator):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
@@ -45,12 +72,18 @@ def add_score_to_file(score, file_name, number_of_trained_clasificator):
     file.write(json_string)
     file.close()
 
+def count_layer_by_name(model, key_world_in_name):
+    counted_layers = 0
+    for layer in model.layers:
+        if key_world_in_name in layer.name:
+            counted_layers += 1
 
-def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256):
+    return counted_layers
+
+def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16, filters_in_grup_after_division=2):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
     print('Testowanie warstw konwolucyjnych')
-
     model = load_model(path_to_model)
     model_hash = NNHasher.hash_model(model)
     model.summary()
@@ -74,25 +107,41 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256)
                 cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i+2)  # i + 2 ponieważ trzeba uwzględnić
                                                                                 # jeszcze warstwę normalizującą i ReLU
 
-                cutted_model = NNModifier.split_last_conv_block(cutted_model, filters_in_grup_after_division=2)
-                cutted_model.summary()
-
-                for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
-                    layer.trainable = False
-
-                cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=10)
-                # cutted_model = NNModifier.add_concentrate_output_to_the_end(cutted_model)
-                # cutted_model = NNModifier.add_classifier_to_end(cutted_model)
-                cutted_model.load_weights(path_to_model, by_name=True)
+                cutted_model = NNModifier.split_last_conv_block_on_groups(cutted_model, filters_in_grup_after_division=filters_in_grup_after_division)
                 cutted_model.summary()
 
                 del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
-                # save_model(cutted_model, 'temp/model.h5')
-                # for i in range(32):
-                #     cutted_model = load_model('temp/model.h5')
-                scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
-                add_score_to_file(score=scores, file_name=model_hash+'v2', number_of_trained_clasificator=count_conv_layer)
 
+                save_model(cutted_model, 'temp/model.hdf5')
+
+                number_of_conv_layers_in_network = count_layer_by_name(cutted_model, 'splited_conv2d_')
+                number_of_iteration_per_the_network = int(number_of_conv_layers_in_network / clasificators_trained_at_one_time)
+
+                for j in range(number_of_iteration_per_the_network):
+                    cutted_model = load_model('temp/model.hdf5')
+
+                    if j > 0:
+                        start_index = 0
+                        end_index = j * clasificators_trained_at_one_time
+                        cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index, end_index)
+
+                    if j+1 < number_of_iteration_per_the_network:
+                        start_index = (j+1) * clasificators_trained_at_one_time
+                        end_index = number_of_conv_layers_in_network
+                        cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index, end_index)
+
+                    for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
+                        layer.trainable = False
+
+                    cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=10)
+                    # cutted_model = NNModifier.add_concentrate_output_to_the_end(cutted_model)
+                    # cutted_model = NNModifier.add_classifier_to_end(cutted_model)
+                    cutted_model.load_weights(path_to_model, by_name=True)
+                    cutted_model.summary()
+
+                    scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
+                    add_partial_score_to_file(score=scores, file_name=model_hash+'v2', number_of_trained_clasificator=count_conv_layer)
+                    K.clear_session()
                 # tf.reset_default_graph()
                 K.clear_session()
 
@@ -364,7 +413,9 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
-    assesing_conv_layers(path_to_model=path_to_original_model, start_from_conv_layer=1)
+    assesing_conv_layers(path_to_model=path_to_original_model,
+                         clasificators_trained_at_one_time=16,
+                         start_from_conv_layer=1)
 
     model = load_model(path_to_original_model)
     model_hash = NNHasher.hash_model(model)

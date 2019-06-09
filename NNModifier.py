@@ -221,7 +221,6 @@ class NNModifier:
             if json_object["config"]["layers"][layer_number]["class_name"] == 'Conv2D':     # Sprawdzenie czy warstwa jest konwolucyjna
                 if with_conv in chosen_layer_list:  # sprawdzenie czy warstwa jest na liście warstw do usunięcia
 
-                    # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
                     json_object = NNModifier.add_phrase_to_layer_name(json_object, layer_number, '_changed')
                 with_conv += 1
 
@@ -240,14 +239,7 @@ class NNModifier:
         return json_object
 
     @staticmethod
-    def split_last_conv_block(model, filters_in_grup_after_division=None, split_on_x_new_filters=None, kernel_dimension=(3, 3), pading='same'):
-        if filters_in_grup_after_division in None and split_on_x_new_filters is None:
-            raise ValueError(
-                'Nie podano w jaki sposób podzielić warstwe konwolusyjną. Podaj filters_in_grup_after_division lub split_on_x_new_filters')
-        if filters_in_grup_after_division is None and split_on_x_new_filters is None:
-            raise ValueError(
-                'Podaj tylko jeden sposb podziau. Podaj filters_in_grup_after_division lub split_on_x_new_filters')
-
+    def split_last_conv_block_on_groups(model, filters_in_grup_after_division, kernel_dimension=(3, 3), pading='same'):
         output_layers = []
 
         conv_layer_name_first_part = 'splited_conv2d_'
@@ -262,22 +254,13 @@ class NNModifier:
                 if 'batch_normalization' in model.layers[-i+1].name:
                     batch_normalization_weights = model.layers[-i+1].get_weights()
 
-                if filters_in_grup_after_division is not None:
-                    for j in range(int(conv_weights[0].shape[0]/filters_in_grup_after_division)):
-                        x = Conv2D(filters_in_grup_after_division, kernel_dimension, padding=pading,
-                                   name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
-                        x = BatchNormalization(name=batchnormalization_name_first_part + str(j))(x)
-                        x = ReLU(name=relu_name_first_part + str(j))(x)
-                        output_layers.append(x)
-                    break
-                else:
-                    for j in range(split_on_x_new_filters):
-                        x = Conv2D(int(number_of_filters/split_on_x_new_filters), kernel_dimension, padding=pading,
-                                   name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
-                        x = BatchNormalization(name=batchnormalization_name_first_part + str(j))(x)
-                        x = ReLU(name=relu_name_first_part + str(j))(x)
-                        output_layers.append(x)
-                    break
+                for j in range(int(conv_weights[0].shape[0]/filters_in_grup_after_division)):
+                    x = Conv2D(filters_in_grup_after_division, kernel_dimension, padding=pading,
+                               name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
+                    x = BatchNormalization(name=batchnormalization_name_first_part + str(j))(x)
+                    x = ReLU(name=relu_name_first_part + str(j))(x)
+                    output_layers.append(x)
+                break
 
         if output_layers is []:
             raise TypeError("Model don't have convolutional layer")
@@ -291,12 +274,8 @@ class NNModifier:
             layer_name = layer.name
             if conv_layer_name_first_part in layer_name:
                 conv_layer_number = int(layer_name[-1])
-                if filters_in_grup_after_division is not None:
-                    start_index = conv_layer_number * filters_in_grup_after_division
-                    end_index = (conv_layer_number + 1) * filters_in_grup_after_division
-                else:
-                    start_index = conv_layer_number * int(number_of_filters / split_on_x_new_filters)
-                    end_index = (conv_layer_number + 1) * int(number_of_filters / split_on_x_new_filters)
+                start_index = conv_layer_number * filters_in_grup_after_division
+                end_index = (conv_layer_number + 1) * filters_in_grup_after_division
                 layer_weights = conv_weights[0][start_index:end_index]
                 layer_weights = np.swapaxes(layer_weights, 0, 3)
                 layer_weights = np.swapaxes(layer_weights, 1, 2)
@@ -304,20 +283,79 @@ class NNModifier:
                 layer_biases = conv_weights[1][start_index:end_index]
 
                 layer.set_weights([layer_weights, layer_biases])
+                break
 
             if batchnormalization_name_first_part in layer_name:
                 batch_normalization_layer_number = int(layer_name[-1])
-                if filters_in_grup_after_division is not None:
-                    start_index = batch_normalization_layer_number * filters_in_grup_after_division
-                    end_index = (batch_normalization_layer_number + 1) * filters_in_grup_after_division
-                else:
-                    start_index = batch_normalization_layer_number * int(number_of_filters / split_on_x_new_filters)
-                    end_index = (batch_normalization_layer_number + 1) * int(number_of_filters / split_on_x_new_filters)
+                start_index = batch_normalization_layer_number * filters_in_grup_after_division
+                end_index = (batch_normalization_layer_number + 1) * filters_in_grup_after_division
                 layer_weights = []
                 for narray in batch_normalization_weights:
                     layer_weights.append(narray[start_index:end_index])
 
                 layer.set_weights(layer_weights)
+                break
+
+        return model
+
+    @staticmethod
+    def split_last_conv_block_on_x_groups(model, split_on_x_new_filters, kernel_dimension=(3, 3), pading='same'):
+
+        output_layers = []
+
+        conv_layer_name_first_part = 'splited_conv2d_'
+        batch_normalization_name_first_part = 'splited_batch_normalization_'
+        relu_name_first_part = 'splited_relu_'
+        for i in range(1, len(model.layers) + 1):
+            if 'conv2d' in model.layers[-i].name:
+                conv_weights = model.layers[-i].get_weights()
+                conv_weights[0] = np.swapaxes(conv_weights[0], 0, 3)
+                conv_weights[0] = np.swapaxes(conv_weights[0], 1, 2)
+                number_of_filters = model.layers[-i].filters
+                if 'batch_normalization' in model.layers[-i + 1].name:
+                    batch_normalization_weights = model.layers[-i + 1].get_weights()
+
+                for j in range(split_on_x_new_filters):
+                    x = Conv2D(int(number_of_filters / split_on_x_new_filters), kernel_dimension, padding=pading,
+                               name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
+                    x = BatchNormalization(name=batch_normalization_name_first_part + str(j))(x)
+                    x = ReLU(name=relu_name_first_part + str(j))(x)
+                    output_layers.append(x)
+                break
+
+        if output_layers is []:
+            raise TypeError("Model don't have convolutional layer")
+
+        model.save('temp/model.h5')
+        model = Model(inputs=model.inputs, outputs=output_layers)
+        model.load_weights('temp/model.h5', by_name=True)
+        os.remove('temp/model.h5')
+
+        for layer in model.layers:
+            layer_name = layer.name
+            if conv_layer_name_first_part in layer_name:
+                conv_layer_number = int(layer_name[-1])
+                start_index = conv_layer_number * int(number_of_filters / split_on_x_new_filters)
+                end_index = (conv_layer_number + 1) * int(number_of_filters / split_on_x_new_filters)
+                layer_weights = conv_weights[0][start_index:end_index]
+                layer_weights = np.swapaxes(layer_weights, 0, 3)
+                layer_weights = np.swapaxes(layer_weights, 1, 2)
+
+                layer_biases = conv_weights[1][start_index:end_index]
+
+                layer.set_weights([layer_weights, layer_biases])
+                break
+
+            if batch_normalization_name_first_part in layer_name:
+                batch_normalization_layer_number = int(layer_name[-1])
+                start_index = batch_normalization_layer_number * int(number_of_filters / split_on_x_new_filters)
+                end_index = (batch_normalization_layer_number + 1) * int(number_of_filters / split_on_x_new_filters)
+                layer_weights = []
+                for narray in batch_normalization_weights:
+                    layer_weights.append(narray[start_index:end_index])
+
+                layer.set_weights(layer_weights)
+                break
 
         return model
 
@@ -467,6 +505,44 @@ class NNModifier:
         return weights
 
     @staticmethod
-    def freeze_all_layers_weights(cutted_model):
-        for layer in cutted_model.layers:
+    def freeze_all_layers_weights(model: Model):
+        for layer in model.layers:
             layer.trainable = False
+
+    @staticmethod
+    def remove_choosen_last_conv_blocks(model, start_index, end_index):
+        model.save('temp/model.h5')
+        model_dictionary = json.loads(model.to_json(indent=4))
+
+        interwal_of_layer_numbers = np.arange(start_index, end_index)
+        NNModifier.remove_chosen_conv_block(model_dictionary, interwal_of_layer_numbers)
+
+        NNModifier.remove_chosen_output(model_dictionary, interwal_of_layer_numbers)
+
+        model = model_from_json(json.dumps(model_dictionary))
+        model.load_weights('temp/model.h5', by_name=True)
+        return model
+
+    @staticmethod
+    def remove_chosen_output(model_dictionary: dict, interwal_of_layer_numbers):
+        removed_layers = 0
+        number_of_elements = len(model_dictionary['config']['output_layers'])
+        for i in range(number_of_elements):
+            output_name = model_dictionary['config']['output_layers'][i - removed_layers][0]
+            if 'splited' in output_name:
+                splited_layer_name = output_name.split("_")
+                if int(splited_layer_name[-1]) in interwal_of_layer_numbers:
+                    del model_dictionary['config']['output_layers'][i - removed_layers]
+                    removed_layers += 1
+
+    @staticmethod
+    def remove_chosen_conv_block(model_dictionary: dict, interwal_of_layer_numbers):
+        removed_layers = 0
+        number_of_layers = len(model_dictionary['config']['layers'])
+        for layer_number in range(number_of_layers):
+            layer_name = model_dictionary['config']['layers'][layer_number - removed_layers]['name']
+            if 'splited' in layer_name:
+                splited_layer_name = layer_name.split("_")
+                if int(splited_layer_name[-1]) in interwal_of_layer_numbers:
+                    del model_dictionary['config']['layers'][layer_number - removed_layers]
+                    removed_layers += 1

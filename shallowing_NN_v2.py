@@ -20,6 +20,7 @@ from utils.File_menager import FileManager
 from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
 from custom_loss_function import loss_for_many_clasificators
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
+import math
 
 
 def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
@@ -161,6 +162,10 @@ def remove_scores_of_last_conv_layer(file_name: str):
     file.write(json_str)
     file.close()
 
+def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int):
+    layer_number = return_layer_number_of_chosen_conv_layer(model, with_conv_layer)
+    return model["config"]["layers"][layer_number]['config']['filters']
+
 def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
                          filters_in_grup_after_division=2, resume_testing=False):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
@@ -203,38 +208,45 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256,
 
                 del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
 
-                save_model(cutted_model, 'temp/model.hdf5')
+                number_of_filters = number_of_filters_in_conv_layer(model_architecture, count_conv_layer)
+                number_of_iteration_per_the_conv_layer = math.ceil(number_of_filters / clasificators_trained_at_one_time)
 
-                number_of_conv_layers_in_network = count_layer_by_name(cutted_model, 'splited_conv2d_')
-                number_of_iteration_per_the_network = int(number_of_conv_layers_in_network / clasificators_trained_at_one_time)
+                if number_of_iteration_per_the_conv_layer > 1:      # potrzebne jeżeli ilość trewowanych klasyfikatorów
+                    save_model(cutted_model, 'temp/model.hdf5')     # jest wieksza niż ilośc filtrów w warstwie
+                    for j in range(number_of_iteration_per_the_conv_layer):
+                        cutted_model = load_model('temp/model.hdf5')
 
-                for j in range(number_of_iteration_per_the_network):
-                    cutted_model = load_model('temp/model.hdf5')
+                        if j > 0:
+                            start_index = 0
+                            end_index = j * clasificators_trained_at_one_time
+                            cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index, end_index)
 
-                    if j > 0:
-                        start_index = 0
-                        end_index = j * clasificators_trained_at_one_time
-                        cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index, end_index)
+                        if j+1 < number_of_iteration_per_the_conv_layer:
+                            start_index = (j+1) * clasificators_trained_at_one_time
+                            end_index = number_of_filters
+                            cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index, end_index)
 
-                    if j+1 < number_of_iteration_per_the_network:
-                        start_index = (j+1) * clasificators_trained_at_one_time
-                        end_index = number_of_conv_layers_in_network
-                        cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index, end_index)
+                        for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
+                            layer.trainable = False
 
-                    for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
-                        layer.trainable = False
+                        cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=10)
+                        cutted_model.load_weights(path_to_model, by_name=True)
+                        cutted_model.summary()
 
+                        scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
+
+                        add_partial_score_to_file(score=scores, file_name=score_file_name, number_of_trained_clasificator=count_conv_layer)
+                        K.clear_session()
+
+                else:
                     cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=10)
-                    # cutted_model = NNModifier.add_concentrate_output_to_the_end(cutted_model)
-                    # cutted_model = NNModifier.add_classifier_to_end(cutted_model)
                     cutted_model.load_weights(path_to_model, by_name=True)
                     cutted_model.summary()
 
                     scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
 
-                    add_partial_score_to_file(score=scores, file_name=score_file_name, number_of_trained_clasificator=count_conv_layer)
-                    K.clear_session()
-                # tf.reset_default_graph()
+                    add_partial_score_to_file(score=scores, file_name=score_file_name,
+                                              number_of_trained_clasificator=count_conv_layer)
                 K.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
@@ -510,10 +522,15 @@ if __name__ == '__main__':
                          start_from_conv_layer=1,
                          resume_testing=True)
 
+
+
     # model = load_model(path_to_original_model)
     # model_hash = NNHasher.hash_model(model)
     # K.clear_session()
-    #
+    # model_architecture = model.to_json(indent=4)
+    # model_architecture = json.loads(model_architecture)
+    # check_integrity_of_score_file(str(model_hash) + 'v2', model_architecture)
+
     # shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
     #                                   path_to_assessing_data_group_of_filters=str(model_hash) + 'v2')
 

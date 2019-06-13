@@ -80,16 +80,80 @@ def count_layer_by_name(model, key_world_in_name):
 
     return counted_layers
 
-def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16, filters_in_grup_after_division=2):
+def return_layer_number_of_chosen_conv_layer(model: dict, with_conv_layer: int):
+    conv_layer_counter = 0
+    for layer_number, layer in enumerate(model["config"]["layers"]):
+        if 'conv' in layer['name']:
+            conv_layer_counter += 1
+            if with_conv_layer == conv_layer_counter:
+                return layer_number
+
+
+def find_max_key_in_dictionary(dictionary):
+    return max({int(k) for k in dictionary.keys()})
+
+
+def check_on_with_layer_testing_was_stopped(file_name: str, model: dict):
+    file = open(file_name, 'r')
+    json_string = file.read()
+    file.close()
+
+    dictionary = json.loads(json_string)
+    number_of_last_conv_checked = find_max_key_in_dictionary(dictionary)
+
+    return number_of_last_conv_checked
+
+
+def check_if_assesing_chosen_layer_was_complited(file_name: str, model: dict, with_conv_layer: int):
+    file = open(file_name, 'r')
+    json_string = file.read()
+    file.close()
+
+    dictionary = json.loads(json_string)
+
+    layer_number = return_layer_number_of_chosen_conv_layer(model, with_conv_layer)
+    number_of_filters_in_last_checked_conv_layer = model["config"]["layers"][layer_number]['config']['filters']
+
+    if len(dictionary[str(with_conv_layer)]['accuracy']) == number_of_filters_in_last_checked_conv_layer:
+        return True
+    else:
+        return False
+
+
+def remove_scores_of_last_conv_layer(file_name: str):
+    file = open(file_name, 'r')
+    json_string = file.read()
+    file.close()
+
+    dictionary = json.loads(json_string)
+    last_conv_layer = find_max_key_in_dictionary(dictionary)
+    del dictionary[str(last_conv_layer)]
+
+    json_str = json.dumps(dictionary)
+    file = open(file_name, 'w')
+    file.write(json_str)
+    file.close()
+
+def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
+                         filters_in_grup_after_division=2, resume_testing=False):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
     print('Testowanie warstw konwolucyjnych')
     model = load_model(path_to_model)
     model_hash = NNHasher.hash_model(model)
+    score_file_name = model_hash + 'v2-dzielone_na_32'
+
     model.summary()
 
     model_architecture = model.to_json(indent=4)
     model_architecture = json.loads(model_architecture)
+
+    if resume_testing is True:
+        start_from_conv_layer = check_on_with_layer_testing_was_stopped(score_file_name, model_architecture)
+        if not check_if_assesing_chosen_layer_was_complited(start_from_conv_layer):
+            remove_scores_of_last_conv_layer(score_file_name)
+        else:
+            start_from_conv_layer += 1
 
     del(model)
 
@@ -140,7 +204,8 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256,
                     cutted_model.summary()
 
                     scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
-                    add_partial_score_to_file(score=scores, file_name=model_hash+'v2', number_of_trained_clasificator=count_conv_layer)
+
+                    add_partial_score_to_file(score=scores, file_name=score_file_name, number_of_trained_clasificator=count_conv_layer)
                     K.clear_session()
                 # tf.reset_default_graph()
                 K.clear_session()
@@ -415,7 +480,8 @@ if __name__ == '__main__':
 
     assesing_conv_layers(path_to_model=path_to_original_model,
                          clasificators_trained_at_one_time=16,
-                         start_from_conv_layer=1)
+                         start_from_conv_layer=1,
+                         resume_testing=True)
 
     model = load_model(path_to_original_model)
     model_hash = NNHasher.hash_model(model)

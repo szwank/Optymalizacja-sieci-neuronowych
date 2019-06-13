@@ -27,7 +27,7 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
 
     conv_layer_number = number_of_trained_clasificator
     middle_position = int((len(score) - 1) / 2) + 1
-    loss = score[:middle_position]
+    loss = score[1:middle_position]
     accuracy = score[middle_position:]
 
     if os.path.exists(file_name):
@@ -35,14 +35,14 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
         json_string = file.read()
         dictionary = json.loads(json_string)
         if str(conv_layer_number) in dictionary.keys():
-            subordinate_dictionary = dictionary[str(conv_layer_number)]['loss'].extend(loss)
-            subordinate_dictionary = dictionary[str(conv_layer_number)]['accuracy'].extend(accuracy)
+            dictionary[str(conv_layer_number)]['loss'].extend(loss)
+            dictionary[str(conv_layer_number)]['accuracy'].extend(accuracy)
         else:
-            subordinate_dictionary = {str(conv_layer_number): {'loss': loss[1:], 'accuracy': accuracy[:-2]}}
+            subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
             dictionary.update(subordinate_dictionary)
         file.close()
     else:
-        dictionary = {str(conv_layer_number): {'loss': loss[1:], 'accuracy': accuracy[:-2]}}
+        dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
 
     file = open(file_name, "w")
     json_string = json.dumps(dictionary)
@@ -510,12 +510,12 @@ if __name__ == '__main__':
                          start_from_conv_layer=1,
                          resume_testing=True)
 
-    model = load_model(path_to_original_model)
-    model_hash = NNHasher.hash_model(model)
-    K.clear_session()
-
-    shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
-                                      path_to_assessing_data_group_of_filters=str(model_hash) + 'v2')
+    # model = load_model(path_to_original_model)
+    # model_hash = NNHasher.hash_model(model)
+    # K.clear_session()
+    #
+    # shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
+    #                                   path_to_assessing_data_group_of_filters=str(model_hash) + 'v2')
 
     # path_to_shallowed_model = 'temp/model.hdf5'
     # save_model(shallowed_model, filepath=path_to_shallowed_model)

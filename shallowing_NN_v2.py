@@ -121,6 +121,11 @@ def find_max_key_in_dictionary(dictionary):
     return max({int(k) for k in dictionary.keys()})
 
 
+def remove_choosen_keys(dictionary, keys):
+    for key in keys:
+        del dictionary[key]
+
+
 def check_on_with_layer_testing_was_stopped(file_name: str, model: dict):
     file = open(file_name, 'r')
     json_string = file.read()

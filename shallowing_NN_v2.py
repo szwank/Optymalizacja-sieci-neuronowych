@@ -141,7 +141,7 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256,
     print('Testowanie warstw konwolucyjnych')
     model = load_model(path_to_model)
     model_hash = NNHasher.hash_model(model)
-    score_file_name = model_hash + 'v2-dzielone_na_32'
+    score_file_name = model_hash + 'v2'
 
     model.summary()
 
@@ -150,7 +150,7 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256,
 
     if resume_testing is True:
         start_from_conv_layer = check_on_with_layer_testing_was_stopped(score_file_name, model_architecture)
-        if not check_if_assesing_chosen_layer_was_complited(start_from_conv_layer):
+        if not check_if_assesing_chosen_layer_was_complited(score_file_name, model_architecture, start_from_conv_layer):
             remove_scores_of_last_conv_layer(score_file_name)
         else:
             start_from_conv_layer += 1

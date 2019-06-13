@@ -49,6 +49,33 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
     file.write(json_string)
     file.close()
 
+def check_integrity_of_score_file(file_name: str, model: dict):
+    file = open(file_name, 'r')
+    json_string = file.read()
+    file.close()
+
+    dictionary = json.loads(json_string)
+
+    broken_scores_in_conv_layers = []
+
+    for key in dictionary.keys():
+        accuracy_len = len(dictionary[key]['accuracy'])
+        loss_len = len(dictionary[key]['loss'])
+
+        layer_number = return_layer_number_of_chosen_conv_layer(model, int(key))
+
+        if accuracy_len is not loss_len:
+            broken_scores_in_conv_layers.append(int(key))
+
+        elif model["config"]["layers"][layer_number]['config']['filters'] is not accuracy_len:
+            broken_scores_in_conv_layers.append(int(key))
+
+    if broken_scores_in_conv_layers is []:
+        return True
+    else:
+        return broken_scores_in_conv_layers
+
+
 def add_score_to_file(score, file_name, number_of_trained_clasificator):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 

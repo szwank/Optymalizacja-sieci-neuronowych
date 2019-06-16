@@ -21,6 +21,7 @@ from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical
 from custom_loss_function import loss_for_many_clasificators
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 import math
+import time
 
 
 def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
@@ -32,8 +33,15 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
     accuracy = score[middle_position:]
 
     if os.path.exists(file_name):
-        file = open(file_name, "r")
-        json_string = file.read()
+        while 'json_string' not in locals():
+            try:
+                with open(file_name, "r") as file:
+                    json_string = file.read()
+                    file.close()
+                    time.sleep(0.5)
+            except:
+                pass
+
         dictionary = json.loads(json_string)
 
         if str(conv_layer_number) in dictionary.keys():
@@ -43,14 +51,21 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
             subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
             dictionary.update(subordinate_dictionary)
 
-        file.close()
     else:
         dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
 
-    file = open(file_name, "w")
-    json_string = json.dumps(dictionary)
-    file.write(json_string)
-    file.close()
+    writed_correctly = None
+
+    while writed_correctly is None:
+        try:
+            with open(file_name, "w") as file:
+                json_string = json.dumps(dictionary)
+                writed_correctly = file.write(json_string)
+                file.close()
+                time.sleep(0.5)
+        except:
+            writed_correctly = None
+
 
 def check_integrity_of_score_file(file_name: str, model: dict):
     file = open(file_name, 'r')
@@ -529,7 +544,7 @@ if __name__ == '__main__':
                          clasificators_trained_at_one_time=32,
                          filters_in_grup_after_division=1,
                          start_from_conv_layer=1,
-                         resume_testing=True)
+                         resume_testing=False)
 
 
 

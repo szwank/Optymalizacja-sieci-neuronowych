@@ -240,8 +240,9 @@ class NNModifier:
 
     @staticmethod
     def split_last_conv_block_on_groups(model, filters_in_grup_after_division, kernel_dimension=(3, 3), pading='same'):
-        output_layers = []
+        model.save('temp/model.h5')
 
+        output_layers = []
         conv_layer_name_first_part = 'splited_conv2d_'
         batchnormalization_name_first_part = 'splited_batch_normalization_'
         relu_name_first_part = 'splited_relu_'
@@ -265,7 +266,6 @@ class NNModifier:
         if output_layers is []:
             raise TypeError("Model don't have convolutional layer")
 
-        model.save('temp/model.h5')
         model = Model(inputs=model.inputs, outputs=output_layers)
         model.load_weights('temp/model.h5', by_name=True)
         os.remove('temp/model.h5')

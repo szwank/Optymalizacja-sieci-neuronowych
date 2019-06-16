@@ -35,12 +35,14 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
         file = open(file_name, "r")
         json_string = file.read()
         dictionary = json.loads(json_string)
+
         if str(conv_layer_number) in dictionary.keys():
             dictionary[str(conv_layer_number)]['loss'].extend(loss)
             dictionary[str(conv_layer_number)]['accuracy'].extend(accuracy)
         else:
             subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
             dictionary.update(subordinate_dictionary)
+
         file.close()
     else:
         dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
@@ -137,7 +139,7 @@ def check_on_with_layer_testing_was_stopped(file_name: str, model: dict):
     return number_of_last_conv_checked
 
 
-def check_if_assesing_chosen_layer_was_complited(file_name: str, model: dict, with_conv_layer: int):
+def check_if_assesing_chosen_layer_was_complited(file_name: str, model: dict, with_conv_layer: int, filters_in_groups_after_division: int):
     file = open(file_name, 'r')
     json_string = file.read()
     file.close()
@@ -147,7 +149,7 @@ def check_if_assesing_chosen_layer_was_complited(file_name: str, model: dict, wi
     layer_number = return_layer_number_of_chosen_conv_layer(model, with_conv_layer)
     number_of_filters_in_last_checked_conv_layer = model["config"]["layers"][layer_number]['config']['filters']
 
-    if len(dictionary[str(with_conv_layer)]['accuracy']) == number_of_filters_in_last_checked_conv_layer:
+    if len(dictionary[str(with_conv_layer)]['accuracy']) == number_of_filters_in_last_checked_conv_layer/filters_in_groups_after_division:
         return True
     else:
         return False
@@ -187,7 +189,7 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256,
 
     if resume_testing is True:
         start_from_conv_layer = check_on_with_layer_testing_was_stopped(score_file_name, model_architecture)
-        if not check_if_assesing_chosen_layer_was_complited(score_file_name, model_architecture, start_from_conv_layer):
+        if not check_if_assesing_chosen_layer_was_complited(score_file_name, model_architecture, start_from_conv_layer, filters_in_grup_after_division):
             remove_scores_of_last_conv_layer(score_file_name)
         else:
             start_from_conv_layer += 1
@@ -220,6 +222,7 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256,
                     save_model(cutted_model, 'temp/model.hdf5')     # jest wieksza niż ilośc filtrów w warstwie
                     for j in range(number_of_iteration_per_the_conv_layer):
                         cutted_model = load_model('temp/model.hdf5')
+                        print('number of clasificator set', j+1, 'of', number_of_iteration_per_the_conv_layer)
 
                         if j > 0:
                             start_index = 0
@@ -345,7 +348,7 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         training_generator,  # Podawanie danych uczących
         verbose=1,
         steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
-        epochs=1000,  # ilość epok treningu
+        epochs=10000,  # ilość epok treningu
         callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
         validation_steps=VALIDATION_SIZE // BATCH_SIZE,
         workers=4,
@@ -523,7 +526,8 @@ if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
     assesing_conv_layers(path_to_model=path_to_original_model,
-                         clasificators_trained_at_one_time=16,
+                         clasificators_trained_at_one_time=32,
+                         filters_in_grup_after_division=1,
                          start_from_conv_layer=1,
                          resume_testing=True)
 

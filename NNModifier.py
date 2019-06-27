@@ -100,7 +100,7 @@ class NNModifier:
 
 
     @staticmethod
-    def remove_chosen_conv_layers(model, layers_numbers_to_remove):
+    def remove_chosen_conv_layers(model: Model, layers_numbers_to_remove: list):
         """Metoda usuwa wskazane warstwy konwolucyjne wraz z odpowiadającymi im warstwami Batch normalization oraz ReLU
         jeżeli takie istnieją. Usuwanie odbywa się na słowniku przekonwertowanych z JSON. W konsoli wypisywane są nazwy
         usuwanych warstw. Metoda towrzy grafy sieci przed i po usunięciu warst w folderze temp. Nazwy plików to
@@ -117,7 +117,7 @@ class NNModifier:
 
         Create_NN_graph.create_NN_graph(model, name='original_model.png')   # Utworzenie grafu orginalnej sieci
 
-        witch_conv = 1  # Licznik warstw konwolucyjnych
+        conv_layer_number = 1  # Licznik warstw konwolucyjnych
         number_of_removed_layers = 0
 
         json_model = model.to_json(indent=4)        # Przekonwertowanie modelu na słownik
@@ -127,14 +127,15 @@ class NNModifier:
         for layer_number in range(number_of_layers):  # Iteracja po warstwach w modelu
             layer_number_to_remove = layer_number - number_of_removed_layers
             if json_object["config"]["layers"][layer_number_to_remove]["class_name"] == 'Conv2D':     # Sprawdzenie czy warstwa jest konwolucyjna
-                if witch_conv in layers_numbers_to_remove:  # sprawdzenie czy warstwa jest na liście warstw do usunięcia
+                if conv_layer_number in layers_numbers_to_remove:  # sprawdzenie czy warstwa jest na liście warstw do usunięcia
 
                     # Usunięcie warstwy wraz z odpowiadającymi jej warstwami batch normalization oraz ReLU.
                     json_object = NNModifier.remove_chosen_conv_block_from_json_string(json_object, layer_number_to_remove)
                     number_of_removed_layers += 1
-                witch_conv += 1
-                if len(json_object["config"]["layers"]) <= layer_number: # Zapewnienie że petla nigdy nie wejdzie na nie istniejące indeksy
-                    break
+                conv_layer_number += 1
+
+            if len(json_object["config"]["layers"]) <= layer_number:  # Zapewnienie że petla nigdy nie wejdzie na nie istniejące indeksy
+                break
 
         json_model = json.dumps(json_object)# przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
         model = model_from_json(json_model)
@@ -172,7 +173,7 @@ class NNModifier:
 
 
     @staticmethod
-    def remove_chosen_conv_block_from_json_string(json_object, layer_number):
+    def remove_chosen_conv_block_from_json_string(json_object: dict, layer_number: int):
         """Metoda usuwa wskazaną warstwę konwolucyjną i przynależne do niej warstwy batch normalization oraz ReLU.
         W konsoli wypisywane są nazwy usuwanych warstw.
 
@@ -389,20 +390,23 @@ class NNModifier:
 
         return model
     @staticmethod
-    def remove_chosen_filters_from_model(model, chosen_filters, filters_in_grup):
+    def remove_chosen_filters_from_model(model, chosen_filters: dict, filters_in_grup):
         model_dictionary = json.loads(model.to_json())
         number_of_layers = len(model.layers)
+
         model_weights = []
-        last_conv_layer = 0
-        number_of_conv_layer = 0
+        last_shallowed_conv_layer_number = 0
+        actual_conv_layer_number = 0
+        remove_layer_counter = 0
 
         for layer_number, layer in enumerate(model.layers):
             if 'conv2d' in layer.name:
-                number_of_conv_layer += 1
-                layer_index = int(layer.name.split('_')[-1])
-                if layer_index in chosen_filters.keys():
+                actual_conv_layer_number += 1
 
-                    if number_of_conv_layer - 1 > last_conv_layer or model_weights == []:
+                if actual_conv_layer_number-1 in chosen_filters.keys():
+
+                    if actual_conv_layer_number - 1 > last_shallowed_conv_layer_number or model_weights == []:
+                        print(layer.name)
                         actual_conv_layer_weights = layer.get_weights()
                         actual_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(actual_conv_layer_weights[0])
                     else:
@@ -412,8 +416,10 @@ class NNModifier:
 
                     # Sprawdzanie czy niektóre warstwy istnieją po tej konwolucyjnej
                     batch_normalization_layer_is_after_conv_layer = False
+
                     for i in range(1, 2):
                         if 'batch_normalization' in model.layers[layer_number+i].name:
+                            print(model.layers[layer_number+i].name)
                             batch_normalization_layer_is_after_conv_layer = True
                             batch_normalization_weights = model.layers[layer_number + i].get_weights()
                             break
@@ -421,6 +427,7 @@ class NNModifier:
                     next_conv_layer_exist = False
                     for i in range(layer_number+1, number_of_layers):
                         if 'conv2d' in model.layers[i].name:
+                            print(model.layers[i].name)
                             next_conv_layer_exist = True
                             second_conv_layer_weights = model.layers[i].get_weights()
                             second_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
@@ -428,14 +435,14 @@ class NNModifier:
                             break
 
                     # właściwe usuwanie wag
-                    for removed_weights_x_times, filter_number in enumerate(chosen_filters[layer_index]):
+                    for removed_weights_x_times, filter_number in enumerate(chosen_filters[actual_conv_layer_number-1]):
                         start_index = filter_number * filters_in_grup - removed_weights_x_times * filters_in_grup
                         end_index = start_index + filters_in_grup
 
                         actual_conv_layer_weights = NNModifier.remove_chosen_weights(weights=actual_conv_layer_weights,
                                                                                      start_index=start_index,
                                                                                      end_index=end_index)
-                        model_dictionary['config']['layers'][layer_number]['config']['filters'] -= filters_in_grup
+                        model_dictionary['config']['layers'][layer_number - remove_layer_counter]['config']['filters'] -= filters_in_grup
 
 
                         if batch_normalization_layer_is_after_conv_layer:
@@ -449,23 +456,30 @@ class NNModifier:
                                                                                              end_index=end_index,
                                                                                              axis=1)
 
-                    actual_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
-                        actual_conv_layer_weights[0])
-                    if number_of_conv_layer - 1 > last_conv_layer or model_weights == []:
-                        model_weights.extend(actual_conv_layer_weights)
-                    else:
-                        model_weights[-2] = actual_conv_layer_weights[0]
-                        model_weights[-1] = actual_conv_layer_weights[1]
+                    if model_dictionary['config']['layers'][layer_number - remove_layer_counter]['config']['filters'] is 0:     # dla usunięcia warstwy
+                        NNModifier.remove_chosen_conv_block_from_json_string(model_dictionary, layer_number - remove_layer_counter)
+                        remove_layer_counter += 2
+                        if batch_normalization_layer_is_after_conv_layer:
+                            remove_layer_counter += 1
 
-                    if batch_normalization_layer_is_after_conv_layer:
-                        model_weights.extend(batch_normalization_weights)
+                    else:       # kiedy warstwa nie jest usunięta
+                        actual_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
+                            actual_conv_layer_weights[0])
+                        if actual_conv_layer_number - 1 > last_shallowed_conv_layer_number or model_weights == []:
+                            model_weights.extend(actual_conv_layer_weights)
+                        else:
+                            model_weights[-2] = actual_conv_layer_weights[0]
+                            model_weights[-1] = actual_conv_layer_weights[1]
 
-                    if next_conv_layer_exist:
-                        second_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
-                            second_conv_layer_weights[0])
-                        model_weights.extend(second_conv_layer_weights)
+                        if batch_normalization_layer_is_after_conv_layer:
+                            model_weights.extend(batch_normalization_weights)
 
-                last_conv_layer = number_of_conv_layer
+                        if next_conv_layer_exist:
+                            second_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
+                                second_conv_layer_weights[0])
+                            model_weights.extend(second_conv_layer_weights)
+
+                last_shallowed_conv_layer_number = actual_conv_layer_number
 
             conv_layers_left = False
             for i in range(layer_number+1, number_of_layers):
@@ -474,9 +488,12 @@ class NNModifier:
                     break
 
             if not conv_layers_left:
-                for i in range(layer_number+1, number_of_layers):
-                    layer_weights = model.layers[i].get_weights()
-                    model_weights.extend(layer_weights)
+                # for i in range(layer_number+1, number_of_layers):
+                #     if 'dense' in model.layers[i].name:
+                #         break
+                #
+                #     layer_weights = model.layers[i].get_weights()
+                #     model_weights.extend(layer_weights)
                 break
 
         model = model_from_json(json.dumps(model_dictionary))
@@ -515,7 +532,7 @@ class NNModifier:
         model_dictionary = json.loads(model.to_json(indent=4))
 
         interwal_of_layer_numbers = np.arange(start_index, end_index)
-        NNModifier.remove_chosen_conv_block(model_dictionary, interwal_of_layer_numbers)
+        NNModifier.remove_chosen_conv_block_from_interwal(model_dictionary, interwal_of_layer_numbers)
 
         NNModifier.remove_chosen_output(model_dictionary, interwal_of_layer_numbers)
 
@@ -536,7 +553,7 @@ class NNModifier:
                     removed_layers += 1
 
     @staticmethod
-    def remove_chosen_conv_block(model_dictionary: dict, interwal_of_layer_numbers):
+    def remove_chosen_conv_block_from_interwal(model_dictionary: dict, interwal_of_layer_numbers):
         removed_layers = 0
         number_of_layers = len(model_dictionary['config']['layers'])
         for layer_number in range(number_of_layers):

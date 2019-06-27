@@ -81,13 +81,8 @@ class TestSoftSoftMax(unittest.TestCase):
 
         for i in range(100):
             x = 100 * np.random.randn(2, 10)
-            if not np.allclose(model_tested.predict(x, batch_size=2), model.predict(x, batch_size=2)):
-                print('Data:')
-                print(x)
-                print('Tested:')
-                print(model_tested.predict(x, batch_size=2))
-                print('Correct:')
-                print(model.predict(x, batch_size=2))
-                raise ValueError('Wartości nie są identyczne')
+            self.assertTrue(np.allclose(model_tested.predict(x, batch_size=2), model.predict(x, batch_size=2)),
+                            'Data: {}\n Tested: {}\n Correct: {}'.format(x, model_tested.predict(x, batch_size=2), model.predict(x, batch_size=2)))
+
 
 

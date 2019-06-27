@@ -1,11 +1,10 @@
 from keras.preprocessing.image import ImageDataGenerator
-from keras.layers import Lambda, concatenate
+from keras.layers import concatenate
 from keras.models import Model, load_model, save_model
 from keras.optimizers import SGD
 from keras.layers import Softmax
 import keras.backend as K
 from keras.callbacks import ReduceLROnPlateau, TensorBoard, ModelCheckpoint, EarlyStopping
-import numpy as np
 import datetime
 import os
 from NNModifier import NNModifier
@@ -15,10 +14,8 @@ from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
 from custom_loss_function import knowledge_distillation_loos
-from custom_metrics import mean_accuracy
 from utils.File_menager import FileManager
 from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
-from custom_loss_function import loss_for_many_clasificators
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 import math
 import time
@@ -392,48 +389,84 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
     print(scores)
     return scores
 
-def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of_filters: str, path_to_assessing_data_full_layers: str="1"):
+def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of_filters: str, path_to_assessing_data_full_layers: str):
     """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
 
     print('Wypłycanie sieci')
 
-    # wczytanie danych
-    file = open(path_to_assessing_data_group_of_filters, "r")
-    json_string = file.read()
-    layers_accuracy_dict = json.loads(json_string)
-    file.close()
-
-    accuracy_mean_of_group_of_filters = []
-    loss_mean_of_group_of_filters = []
-
-    for i in range(1, len(layers_accuracy_dict)):
-        accuracy = layers_accuracy_dict[str(i)]['accuracy']
-        loss = layers_accuracy_dict[str(i)]['loss']
-        accuracy_mean_of_group_of_filters.append(np.mean(accuracy[:-2]))
-        loss_mean_of_group_of_filters.append(np.mean(loss[1:]))
-
-    print(accuracy_mean_of_group_of_filters)
-    print(loss_mean_of_group_of_filters)
+    filters_accuracy_dict = FileManager.get_dictionary_from_json_text_file(path_to_assessing_data_group_of_filters)
+    layers_accuracy_dict = FileManager.get_dictionary_from_json_text_file(path_to_assessing_data_full_layers)
 
 
+    accuracy_of_whole_layers = []
+    for i in range(len(layers_accuracy_dict)):
+        accuracy_of_whole_layers.append(layers_accuracy_dict[str(i+1)]['accuracy'])
 
-    margins = 0.015  # 1.5% dokładności
-    last_effective_layer = 1
+    remove_all_filters_if_below = 0.015
+    leave_all_filters_if_above = 0.07
+
+    accuracy_of_previous_not_removed_layer = 0
+    layers_to_remove_counter = 0
     filters_in_layers_to_remove = {}
-    for conv_layer_number in range(1, len(layers_accuracy_dict)):
-        filters_to_remove = []
-        for number_of_grup_of_filters in range(len(layers_accuracy_dict[str(conv_layer_number)]['accuracy'])):
-            if accuracy_mean_of_group_of_filters[conv_layer_number-1] >\
-                    layers_accuracy_dict[str(conv_layer_number)]['accuracy'][number_of_grup_of_filters] + margins:
-                filters_to_remove.append(number_of_grup_of_filters)
+    conv_layers_to_remove = []
 
-        filters_in_layers_to_remove.update({conv_layer_number: filters_to_remove})
+    for conv_layer_number in range(len(filters_accuracy_dict)):
+        filters_to_remove = []
+
+        number_of_filters_in_layer = len(filters_accuracy_dict[str(conv_layer_number+1)]['accuracy'])
+
+        actual_accuracy = accuracy_of_whole_layers[conv_layer_number] - accuracy_of_previous_not_removed_layer
+        print('accuracy:{}'.format(actual_accuracy))
+        if actual_accuracy < remove_all_filters_if_below:
+            print('layer {} will be fully removed\n'.format(conv_layer_number + 1))
+            # for number_of_grup_of_filters in range(number_of_filters_in_layer):
+            #     filters_to_remove.append(number_of_grup_of_filters)
+            conv_layers_to_remove.append(conv_layer_number)
+
+        else:
+            filters_accuracy_in_actual_layer = {}
+
+            for number_of_grup_of_filters in range(number_of_filters_in_layer):  # corventing
+                item = {number_of_grup_of_filters: filters_accuracy_dict[str(conv_layer_number+1)]['accuracy'][number_of_grup_of_filters]}
+                filters_accuracy_in_actual_layer.update(item)
+
+            filters_accuracy_in_actual_layer = sort_filters_by_accuracy(filters_accuracy_in_actual_layer)
+
+            percent_of_filters_to_remove = calculate_percent_of_filters_to_remove(actual_accuracy, leave_all_filters_if_above)
+            number_of_filters_to_remove = math.floor(number_of_filters_in_layer * percent_of_filters_to_remove)
+
+            print('{} filters in layer {} will be removed\n'.format(number_of_filters_to_remove, conv_layer_number + 1))
+
+            for i in range(number_of_filters_to_remove):
+                filters_to_remove.append(filters_accuracy_in_actual_layer[i][0])
+                filters_to_remove.sort()
+
+            filters_in_layers_to_remove.update({conv_layer_number - layers_to_remove_counter: filters_to_remove})
+
+            accuracy_of_previous_not_removed_layer = accuracy_of_whole_layers[conv_layer_number]
 
     print(filters_in_layers_to_remove)
 
     original_model = load_model(path_to_original_model)
-    shallowed_model = NNModifier.remove_chosen_filters_from_model(original_model, filters_in_layers_to_remove, 2)
+    shallowed_model = NNModifier.rename_choosen_conv_layers(original_model, [x+1 for x in conv_layers_to_remove])
+    shallowed_model = NNModifier.remove_chosen_conv_layers(shallowed_model, conv_layers_to_remove)
+    shallowed_model.load_weights(path_to_original_model, by_name=True)
+    shallowed_model = NNModifier.remove_chosen_filters_from_model(shallowed_model, filters_in_layers_to_remove, 1)
     return shallowed_model
+
+
+def sort_filters_by_accuracy(filters_accuracy_in_actual_layer: dict):
+    filters_accuracy_in_actual_layer = sorted(filters_accuracy_in_actual_layer.items(), key=lambda t: t[1])
+    return filters_accuracy_in_actual_layer
+
+
+def calculate_percent_of_filters_to_remove(argument, leave_all_filters_if_above):
+    value = ((-1 / leave_all_filters_if_above) * argument) + 1
+    if value < 0:
+        return 0
+    else:
+        return value
+
 
 def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     """Metoda Dokonująca transferu danych"""
@@ -537,29 +570,31 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
-
-    assesing_conv_layers(path_to_model=path_to_original_model,
-                         clasificators_trained_at_one_time=16,
-                         filters_in_grup_after_division=1,
-                         start_from_conv_layer=1,
-                         resume_testing=False)
-
-
-
-    # model = load_model(path_to_original_model)
-    # model_hash = NNHasher.hash_model(model)
-    # K.clear_session()
-    # model_architecture = model.to_json(indent=4)
-    # model_architecture = json.loads(model_architecture)
-    # check_integrity_of_score_file(str(model_hash) + 'v2', model_architecture)
-
-    # shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
-    #                                   path_to_assessing_data_group_of_filters=str(model_hash) + 'v2')
-
-    # path_to_shallowed_model = 'temp/model.hdf5'
-    # save_model(shallowed_model, filepath=path_to_shallowed_model)
-    # K.clear_session()
     #
-    # knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
-    #                        dir_to_original_model=path_to_original_model)
-    #
+    # assesing_conv_layers(path_to_model=path_to_original_model,
+    #                      clasificators_trained_at_one_time=16,
+    #                      filters_in_grup_after_division=1,
+    #                      start_from_conv_layer=1,
+    #                      resume_testing=False)
+
+
+
+    model = load_model(path_to_original_model)
+    model_hash = NNHasher.hash_model(model)
+    model_architecture = model.to_json(indent=4)
+    model_architecture = json.loads(model_architecture)
+    K.clear_session()
+
+    check_integrity_of_score_file(str(model_hash) + 'v2', model_architecture)
+
+    shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
+                                      path_to_assessing_data_group_of_filters=str(model_hash) + 'v2',
+                                      path_to_assessing_data_full_layers=str(model_hash))
+
+    path_to_shallowed_model = 'temp/model.hdf5'
+    save_model(shallowed_model, filepath=path_to_shallowed_model)
+    K.clear_session()
+
+    knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
+                           dir_to_original_model=path_to_original_model)
+

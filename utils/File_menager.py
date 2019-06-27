@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 
@@ -31,3 +32,11 @@ class FileManager:
         scierzka_zapisu_dir = os.path.join(os.getcwd(), folder_name)
         if not os.path.exists(scierzka_zapisu_dir):  # stworzenie folderu jeżeli nie istnieje
             os.makedirs(scierzka_zapisu_dir)
+
+    @staticmethod
+    def get_dictionary_from_json_text_file(path_to_text_file: str):
+        file = open(path_to_text_file, "r")
+        json_string = file.read()
+        layers_accuracy_dict = json.loads(json_string)
+        file.close()
+        return layers_accuracy_dict

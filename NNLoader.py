@@ -56,7 +56,7 @@ class NNLoader:
         best_evaluation_parameter = re.findall("\d+\.\d+", list_of_files_names[0])
         
         if mode not in ['lowest', 'highest']:
-            raise ValueError('NIe znana wartośc parametru mode. Dostępne: "lowest", "highest"')
+            raise ValueError('Nie znana wartośc parametru mode. Dostępne: "lowest", "highest"')
 
         for i, file_name in enumerate(list_of_files_names):
             if 'weights-improvement' in file_name:
@@ -98,6 +98,7 @@ class NNLoader:
 
         for layer in model.layers:
             weights_from_model = layer.get_weights()
+            print(layer.name)
             positions_to_take = len(weights_from_model)
 
             if positions_to_take > 0:
@@ -106,6 +107,9 @@ class NNLoader:
                 weights_for_layer = weights[start_index:end_index]
                 layer.set_weights(weights_for_layer)
                 actual_weight_index = end_index
+
+            if actual_weight_index >= len(weights):
+                break
 
         return model
 

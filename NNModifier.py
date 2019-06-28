@@ -448,7 +448,7 @@ class NNModifier:
 
                     if len(actual_filters_to_remove) > model_dictionary['config']['layers'][layer_number - remove_layer_counter]['config']['filters']:
                         raise ValueError("In 'chosen_filters' list's {}th argument, there are to many arguments."
-                                         "In {}ts layer there are not so many filters to remove.".format(actual_conv_layer_number, actual_conv_layer_number))
+                                         "In {}th layer there are not so many filters to remove.".format(actual_conv_layer_number, actual_conv_layer_number))
 
 
 

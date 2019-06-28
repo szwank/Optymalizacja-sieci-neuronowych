@@ -408,7 +408,7 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
     leave_all_filters_if_above = 0.07
 
     accuracy_of_previous_not_removed_layer = 0
-    layers_to_remove_counter = 0
+    remove_layers_counter = 0
     filters_in_layers_to_remove = {}
     conv_layers_to_remove = []
 
@@ -423,8 +423,8 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
             print('layer {} will be fully removed\n'.format(conv_layer_number + 1))
             # for number_of_grup_of_filters in range(number_of_filters_in_layer):
             #     filters_to_remove.append(number_of_grup_of_filters)
-            conv_layers_to_remove.append(conv_layer_number)
-
+            conv_layers_to_remove.append(conv_layer_number+1)
+            remove_layers_counter += 1
         else:
             filters_accuracy_in_actual_layer = {}
 
@@ -443,7 +443,7 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
                 filters_to_remove.append(filters_accuracy_in_actual_layer[i][0])
                 filters_to_remove.sort()
 
-            filters_in_layers_to_remove.update({conv_layer_number - layers_to_remove_counter: filters_to_remove})
+            filters_in_layers_to_remove.update({(conv_layer_number+1) - remove_layers_counter: filters_to_remove})
 
             accuracy_of_previous_not_removed_layer = accuracy_of_whole_layers[conv_layer_number]
 

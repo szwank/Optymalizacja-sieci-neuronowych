@@ -20,7 +20,7 @@ from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 import math
 import time
 from scipy import interpolate
-from numpy import array
+import numpy as np
 
 
 def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
@@ -420,7 +420,7 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
         number_of_filters_in_layer = len(filters_accuracy_dict[str(conv_layer_number+1)]['accuracy'])
 
         actual_accuracy = accuracy_of_whole_layers[conv_layer_number] - accuracy_of_previous_not_removed_layer
-        print('accuracy increase in {} layer:{}'.format(conv_layer_number + 1, actual_accuracy))
+        print('Accuracy increase in {} layer:{} %'.format(conv_layer_number + 1, actual_accuracy*100))
         if actual_accuracy < remove_all_filters_if_below:
             print('layer {} will be fully removed\n'.format(conv_layer_number + 1))
 
@@ -436,7 +436,7 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
 
             filters_accuracy_in_actual_layer = sort_filters_by_accuracy(filters_accuracy_in_actual_layer)
 
-            percent_of_filters_to_remove = calculate_percent_of_filters_to_remove(actual_accuracy, leave_all_filters_if_above, remove_all_filters_if_below)
+            percent_of_filters_to_remove = calculate_percent_of_filters_to_remove(actual_accuracy*100, leave_all_filters_if_above*100, remove_all_filters_if_below*100)
             number_of_filters_to_remove = math.floor(number_of_filters_in_layer * percent_of_filters_to_remove)
 
             print('{} filters in layer {} will be removed\n'.format(number_of_filters_to_remove, conv_layer_number + 1))
@@ -465,10 +465,15 @@ def sort_filters_by_accuracy(filters_accuracy_in_actual_layer: dict):
 
 
 def calculate_percent_of_filters_to_remove(argument, leave_all_filters_if_above, remove_all_filters_if_below):
+    if argument > leave_all_filters_if_above:
+        return 0
+    elif argument < remove_all_filters_if_below:
+        return 1
+
     percentage_increases = [0.0, 0.027272727272727258, 0.20909090909090908, 0.3563636363636364, 0.5454545454545454,
                             0.7272727272727273, 1.0, 1.1818181818181819]
     x = calculate_the_values_in_the_range(remove_all_filters_if_below, leave_all_filters_if_above, percentage_increases)
-    y = array([1, 0.8, 0.31, 0.15, 0.07, 0.02, 0, 0])
+    y = np.array([1, 0.8, 0.31, 0.15, 0.07, 0.02, 0, 0])
     tck = interpolate.splrep(x, y, s=0.001)
     percent = interpolate.splev(argument, tck, der=0)
 

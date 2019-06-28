@@ -572,36 +572,34 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
-    #
-    # assesing_conv_layers(path_to_model=path_to_original_model,
-    #                      clasificators_trained_at_one_time=16,
-    #                      filters_in_grup_after_division=1,
-    #                      start_from_conv_layer=1,
-    #                      resume_testing=False)
 
-    assesing_conv_layers(path_to_model=path_to_original_model,
-                         clasificators_trained_at_one_time=32,
-                         filters_in_grup_after_division=1,
-                         start_from_conv_layer=1,
-                         resume_testing=False)
+    test = False
+    optimalize_network_structure = True
+    
+    if test is True:
+        assesing_conv_layers(path_to_model=path_to_original_model,
+                             clasificators_trained_at_one_time=32,
+                             filters_in_grup_after_division=1,
+                             start_from_conv_layer=1,
+                             resume_testing=False)
 
+    if optimalize_network_structure is True:
+        model = load_model(path_to_original_model)
+        model_hash = NNHasher.hash_model(model)
+        model_architecture = model.to_json(indent=4)
+        model_architecture = json.loads(model_architecture)
+        K.clear_session()
 
-    model = load_model(path_to_original_model)
-    model_hash = NNHasher.hash_model(model)
-    model_architecture = model.to_json(indent=4)
-    model_architecture = json.loads(model_architecture)
-    K.clear_session()
+        check_integrity_of_score_file(str(model_hash) + 'v2', model_architecture)
 
-    check_integrity_of_score_file(str(model_hash) + 'v2', model_architecture)
+        shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
+                                          path_to_assessing_data_group_of_filters=str(model_hash) + 'v2',
+                                          path_to_assessing_data_full_layers=str(model_hash))
 
-    shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
-                                      path_to_assessing_data_group_of_filters=str(model_hash) + 'v2',
-                                      path_to_assessing_data_full_layers=str(model_hash))
+        path_to_shallowed_model = 'temp/model.hdf5'
+        save_model(shallowed_model, filepath=path_to_shallowed_model)
+        K.clear_session()
 
-    path_to_shallowed_model = 'temp/model.hdf5'
-    save_model(shallowed_model, filepath=path_to_shallowed_model)
-    K.clear_session()
-
-    knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
-                           dir_to_original_model=path_to_original_model)
+        knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
+                               dir_to_original_model=path_to_original_model)
 

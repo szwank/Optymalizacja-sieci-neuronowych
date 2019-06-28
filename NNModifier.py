@@ -390,7 +390,7 @@ class NNModifier:
 
         return model
     @staticmethod
-    def remove_chosen_filters_from_model(model, chosen_filters: dict, filters_in_grup):
+    def remove_chosen_filters_from_model(model, chosen_filters_to_remove: dict, filters_in_grup, debug=False):
         model_dictionary = json.loads(model.to_json())
         number_of_layers = len(model.layers)
 
@@ -400,13 +400,15 @@ class NNModifier:
         remove_layer_counter = 0
 
         for layer_number, layer in enumerate(model.layers):
-            if 'conv2d' in layer.name:
+            if type(layer) is Conv2D:
                 actual_conv_layer_number += 1
 
-                if actual_conv_layer_number-1 in chosen_filters.keys():
-
+                if actual_conv_layer_number in chosen_filters_to_remove.keys():
+                    # Loading weights from layers
                     if actual_conv_layer_number - 1 > last_shallowed_conv_layer_number or model_weights == []:
-                        print(layer.name)
+                        if debug is True:
+                            print('Loading weights from {} layer'.format(layer.name))
+
                         actual_conv_layer_weights = layer.get_weights()
                         actual_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(actual_conv_layer_weights[0])
                     else:
@@ -418,24 +420,39 @@ class NNModifier:
                     batch_normalization_layer_is_after_conv_layer = False
 
                     for i in range(1, 2):
-                        if 'batch_normalization' in model.layers[layer_number+i].name:
-                            print(model.layers[layer_number+i].name)
+                        if type(model.layers[layer_number+i]) is BatchNormalization:
+                            if debug is True:
+                                print('Loading weights from {} layer'.format(model.layers[layer_number+i].name))
+
                             batch_normalization_layer_is_after_conv_layer = True
                             batch_normalization_weights = model.layers[layer_number + i].get_weights()
                             break
 
                     next_conv_layer_exist = False
                     for i in range(layer_number+1, number_of_layers):
-                        if 'conv2d' in model.layers[i].name:
-                            print(model.layers[i].name)
+                        if type(model.layers[i]) is Conv2D:
+                            if debug is True:
+                                print('Loading weights from {} layer'.format(model.layers[i].name))
+
                             next_conv_layer_exist = True
                             second_conv_layer_weights = model.layers[i].get_weights()
                             second_conv_layer_weights[0] = NNModifier.swap_axes_in_convonutional_weights(
                                 second_conv_layer_weights[0])
                             break
 
-                    # właściwe usuwanie wag
-                    for removed_weights_x_times, filter_number in enumerate(chosen_filters[actual_conv_layer_number-1]):
+                    # Removing the filters weights from the loaded weights
+                    actual_filters_to_remove = chosen_filters_to_remove[actual_conv_layer_number]
+
+                    if NNModifier.check_if_list_have_duplicat_arguments(actual_filters_to_remove):
+                        raise ValueError("In 'chosen_filters' list's {}th argument, there are duplicates values.".format(actual_conv_layer_number))
+
+                    if len(actual_filters_to_remove) > model_dictionary['config']['layers'][layer_number - remove_layer_counter]['config']['filters']:
+                        raise ValueError("In 'chosen_filters' list's {}th argument, there are to many arguments."
+                                         "In {}ts layer there are not so many filters to remove.".format(actual_conv_layer_number, actual_conv_layer_number))
+
+
+
+                    for removed_weights_x_times, filter_number in enumerate(actual_filters_to_remove):
                         start_index = filter_number * filters_in_grup - removed_weights_x_times * filters_in_grup
                         end_index = start_index + filters_in_grup
 
@@ -481,27 +498,28 @@ class NNModifier:
 
                 last_shallowed_conv_layer_number = actual_conv_layer_number
 
-            conv_layers_left = False
-            for i in range(layer_number+1, number_of_layers):
-                if 'conv' in model.layers[i].name:
-                    conv_layers_left = True
-                    break
-
-            if not conv_layers_left:
-                # for i in range(layer_number+1, number_of_layers):
-                #     if 'dense' in model.layers[i].name:
-                #         break
-                #
-                #     layer_weights = model.layers[i].get_weights()
-                #     model_weights.extend(layer_weights)
+            if actual_conv_layer_number >= max(chosen_filters_to_remove.keys()):
                 break
 
+
         model = model_from_json(json.dumps(model_dictionary))
-        # w = model.get_weights()
-        # for i in range(len(w)):
-        #     print(np.array_equal(w[i].shape, model_weights[i].shape))
-        model = NNLoader.load_weights_from_list(model, model_weights)
+        model = NNLoader.load_weights_from_list(model, model_weights, debug)
         return model
+
+    @staticmethod
+    def remove_argument_duplicates(the_list: list):
+        return list(dict.fromkeys(the_list))
+
+
+    @staticmethod
+    def check_if_list_have_duplicat_arguments(the_list: list):
+        seen_arguments = {}
+        for argument in the_list:
+            if argument in seen_arguments:
+                return True
+            else:
+                seen_arguments.update({argument: None})
+        return False
 
     @staticmethod
     def remove_chosen_weights(weights, start_index, end_index, axis=0):

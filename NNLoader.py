@@ -93,12 +93,16 @@ class NNLoader:
         return model.load_weights(os.path.join(directory, list_of_files[position_of_best]))
 
     @staticmethod
-    def load_weights_from_list(model, weights):
+    def load_weights_from_list(model, weights, debug=False):
+        if debug is True:
+            print('\nLoading weights to the network:')
+
         actual_weight_index = 0
 
         for layer in model.layers:
             weights_from_model = layer.get_weights()
-            print(layer.name)
+            if debug is True:
+                print('Loading weights to {} layer'.format(layer.name))
             positions_to_take = len(weights_from_model)
 
             if positions_to_take > 0:

@@ -507,12 +507,12 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     FileManager.create_folder(scierzka_logow)
 
     # Callback
-    learning_rate_regulation = ReduceLROnPlateau(monitor='loss', factor=0.1, patience=5, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+    learning_rate_regulation = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
-        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='loss',
+        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='val_loss',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = EarlyStopping(monitor='val_loss', patience=25)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = EarlyStopping(monitor=' val_categorical_crossentropy_metric', patience=15)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
     temperature = 6
@@ -579,7 +579,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     # shallowed_model = Model(inputs=shallowed_model.inputs, outputs=shallowed_model.outputs[0])
     shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=[accuracy,
                                      categorical_crossentropy_metric])
-    Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
+    # Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
     [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
     test_generator = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_test, y_test, batch_size=128),
                                                               path_to_weights=dir_to_original_model,

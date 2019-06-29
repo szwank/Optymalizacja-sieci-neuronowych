@@ -556,7 +556,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     # shallowed_model = Model(inputs=shallowed_model.inputs, outputs=shallowed_model.outputs[0])
     shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=[accuracy,
                                      categorical_crossentropy_metric])
-    Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
+
     [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
     test_generator = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_test, y_test, batch_size=128),
                                                               path_to_weights=dir_to_original_model,

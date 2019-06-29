@@ -115,7 +115,7 @@ class NNModifier:
         model sieci neurnowej z usuniętymi warstwami.
         """
 
-        Create_NN_graph.create_NN_graph(model, name='original_model.png')   # Utworzenie grafu orginalnej sieci
+        # Create_NN_graph.create_NN_graph(model, name='original_model.png')   # Utworzenie grafu orginalnej sieci
 
         conv_layer_number = 1  # Licznik warstw konwolucyjnych
         number_of_removed_layers = 0

@@ -3,6 +3,8 @@ from keras.models import model_from_json
 from keras.datasets import cifar10
 from keras.utils import np_utils
 from keras.models import load_model
+from DataStorage import DataStorage
+from TrainingData import TrainingData
 import os
 import re
 
@@ -42,8 +44,11 @@ class NNLoader:
         y_validation = np_utils.to_categorical(y_validation, NUM_CLASSES)
         y_test = np_utils.to_categorical(y_test, NUM_CLASSES)
 
+        input_data = DataStorage(x_train, x_validation, x_test)
+        output_labels = DataStorage(y_train, y_validation, y_test)
+        training_data = TrainingData(input_data, output_labels)
 
-        return [x_train, x_validation, x_test], [y_train, y_validation, y_test]
+        return training_data
 
     @staticmethod
     def load_best_model_from_dir(directory, mode):

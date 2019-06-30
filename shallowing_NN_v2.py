@@ -352,7 +352,7 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
         accuracy_of_whole_layers.append(layers_accuracy_dict[str(i+1)]['accuracy'])
 
     remove_all_filters_if_below = 0.015
-    leave_all_filters_if_above = 0.07
+    leave_all_filters_if_above = 0.1
 
     accuracy_of_previous_not_removed_layer = 0
     removed_layer_counter = 0
@@ -398,6 +398,7 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
 
     original_model = load_model(path_to_original_model)
     shallowed_model = NNModifier.rename_choosen_conv_layers(original_model, [x+1 for x in conv_layers_to_remove])
+    shallowed_model = NNModifier.rename_first_dense_layer(shallowed_model)
     shallowed_model = NNModifier.remove_chosen_conv_layers(shallowed_model, conv_layers_to_remove)
     shallowed_model.load_weights(path_to_original_model, by_name=True)
     shallowed_model = NNModifier.remove_chosen_filters_from_model(shallowed_model, filters_in_layers_to_remove, 1)
@@ -454,12 +455,12 @@ def knowledge_distillation(path_to_shallowed_model,
     FileManager.create_folder(scierzka_logow)
 
     # Callback
-    learning_rate_regulation = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+    learning_rate_regulation = ReduceLROnPlateau(monitor='val_categorical_crossentropy_metric', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
-        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='val_loss',
+        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='val_categorical_crossentropy_metric',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = EarlyStopping(monitor=' val_categorical_crossentropy_metric', patience=15)  # zatrzymanie uczenia sieci jeżeli
+    earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric', patience=15)  # zatrzymanie uczenia sieci jeżeli
                                                                                     # dokładność się nie zwiększa
 
     temperature = 6
@@ -525,8 +526,8 @@ def knowledge_distillation(path_to_shallowed_model,
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
-    test = False
-    optimalize_network_structure = True
+    test = True
+    optimalize_network_structure = False
     
     if test is True:
         training_data = NNLoader.load_CIFAR10()

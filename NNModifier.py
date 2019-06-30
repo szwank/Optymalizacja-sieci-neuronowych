@@ -215,7 +215,7 @@ class NNModifier:
         json_model = model.to_json(indent=4)  # Przekonwertowanie modelu na słownik
         json_object = json.loads(json_model)
 
-        with_conv = 0
+        with_conv = 1
         number_of_layers = len(json_object["config"]["layers"])
 
         for layer_number in range(number_of_layers):  # Iteracja po warstwach w modelu
@@ -224,6 +224,22 @@ class NNModifier:
 
                     json_object = NNModifier.add_phrase_to_layer_name(json_object, layer_number, '_changed')
                 with_conv += 1
+
+        json_model = json.dumps(json_object)  # przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
+        model = model_from_json(json_model)
+        return model
+
+    @staticmethod
+    def rename_first_dense_layer(model):
+        json_model = model.to_json(indent=4)  # Przekonwertowanie modelu na słownik
+        json_object = json.loads(json_model)
+
+        number_of_layers = len(json_object["config"]["layers"])
+
+        for layer_number in range(number_of_layers):  # Iteracja po warstwach w modelu
+            if json_object["config"]["layers"][layer_number]["class_name"] == 'Dense':  # Sprawdzenie czy warstwa jest Dense
+                json_object = NNModifier.add_phrase_to_layer_name(json_object, layer_number, '_changed')
+                break
 
         json_model = json.dumps(json_object)  # przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
         model = model_from_json(json_model)

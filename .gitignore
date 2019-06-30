@@ -10,6 +10,8 @@ Zapis modelu-uciete/**
 __pycache__/**
 data/**
 code/Zapis modelu/**
+NetworkA/**
+
 
 # Ignorowanie poszczegulnych plików
 *.hdf5
@@ -23,3 +25,4 @@ testy1.py
 *]]*
 test networks.py
 *.tar.gz
+x

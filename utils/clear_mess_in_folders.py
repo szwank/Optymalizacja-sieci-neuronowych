@@ -1,6 +1,6 @@
 from os.path import dirname, abspath
 
-from utils.File_menager import FileManager
+from utils.FileMenager import FileManager
 
 if __name__ == "__main__":
     # Usunięcie pustych folderów w folderze zapis modelu

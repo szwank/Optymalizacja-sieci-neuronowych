@@ -14,13 +14,16 @@ from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
 from custom_loss_function import knowledge_distillation_loos
-from utils.File_menager import FileManager
+from utils.FileMenager import FileManager
 from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 import math
 import time
 from scipy import interpolate
 import numpy as np
+from GeneratorsStorage import GeneratorsStorage
+from DataStorage import DataStorage
+from TrainingData import TrainingData
 
 
 def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
@@ -183,11 +186,11 @@ def remove_scores_of_last_conv_layer(file_name: str):
     file.write(json_str)
     file.close()
 
-def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int):
+def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int,):
     layer_number = return_layer_number_of_chosen_conv_layer(model, with_conv_layer)
     return model["config"]["layers"][layer_number]['config']['filters']
 
-def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
+def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsStorage, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
                          filters_in_grup_after_division=2, resume_testing=False):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
@@ -265,7 +268,7 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256,
                     cutted_model.load_weights(path_to_model, by_name=True)
                     cutted_model.summary()
 
-                    scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
+                    scores = train_and_asses_network(cutted_model, x, y, BATCH_SIZE, count_conv_layer)
 
                     add_partial_score_to_file(score=scores, file_name=score_file_name,
                                               number_of_trained_clasificator=count_conv_layer)
@@ -273,37 +276,31 @@ def assesing_conv_layers(path_to_model, start_from_conv_layer=1, BATCH_SIZE=256,
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
 
-def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
-    number_of_model_outputs = len(cutted_model.outputs)
+def train_and_asses_network(cutted_model, generators_for_training: GeneratorsStorage, batch_size, model_ID):
+
     optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
-    # optimizer = Adam(lr=0.1, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+
+    number_of_model_outputs = len(cutted_model.outputs)
     loss = ['categorical_crossentropy'] * number_of_model_outputs
     loss_weights = [1.0/number_of_model_outputs] * number_of_model_outputs
-    # loss_weights[number_of_trained_clasificator] = 1.0
+
     cutted_model.compile(optimizer,
                          loss=loss,
                          metrics=['accuracy'],
                          loss_weights=loss_weights)
-    # Wczytanie bazy zdjęć
-    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
 
-    TRAIN_SIZE = len(x_train)
-    VALIDATION_SIZE = len(x_validation)
 
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     dir_name = str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") +
                    'warstw_' + str(model_ID) + '_konwolucyjnych')
     relative_path_to_save_model = os.path.join('Zapis modelu-uciete/', dir_name)
     absolute_path_to_save_model = os.path.join(os.getcwd(), relative_path_to_save_model)
-    if not os.path.exists(absolute_path_to_save_model):  # stworzenie folderu jeżeli nie istnieje
-        os.makedirs(absolute_path_to_save_model)
+    FileManager.create_folder(relative_path_to_save_model)
 
     # Ustawienie ścieżki logów i stworzenie folderu jeżeli nie istnieje
     relative_log_path = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + 'warstw_' +
                                      str(model_ID) + '_konwolucyjnych' + '/')
-    absolute_log_path = os.path.join(os.getcwd(), relative_log_path)
-    if not os.path.exists(absolute_log_path):  # stworzenie folderu jeżeli nie istnieje
-        os.makedirs(absolute_log_path)
+    FileManager.create_folder(relative_log_path)
 
     # Callback
     learning_rate_regulation = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=7, verbose=1,
@@ -314,78 +311,26 @@ def train_and_asses_network(cutted_model, BATCH_SIZE, model_ID):
         filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_loss:.2f}.hdf5", monitor='val_loss',
         save_best_only=True, period=5, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
-    # dokładność się nie zwiększa
-
-    print('Using real-time data augmentation.')
-    # Agmentacja denych w czasie rzeczywistym
-    datagen = ImageDataGenerator(
-        featurewise_center=False,  # set input mean to 0 over the dataset
-        samplewise_center=True,  # set each sample mean to 0
-        featurewise_std_normalization=False,  # divide inputs by std of the dataset
-        samplewise_std_normalization=True,  # divide each input by its std
-        zca_whitening=False,  # apply ZCA whitening
-        zca_epsilon=1e-06,  # epsilon for ZCA whitening
-        rotation_range=0,  # randomly rotate images in the range (degrees, 0 to 180)
-        # randomly shift images horizontally (fraction of total width)
-        width_shift_range=4,
-        # randomly shift images vertically (fraction of total height)
-        height_shift_range=4,
-        # shear_range=0.1,  # set range for random shear. Pochylenie zdjęcia w kierunku przeciwnym do wskazówek zegara
-        # zoom_range=0.1,  # set range for random zoom
-        channel_shift_range=0,  # set range for random channel shifts
-        # set mode for filling points outside the input boundaries
-        fill_mode='nearest',
-        cval=0.,  # value used for fill_mode = "constant"
-        horizontal_flip=True,  # randomly flip images
-        vertical_flip=False,  # randomly flip images
-        # set rescaling factor (applied before any other transformation)
-        rescale=1. / 255,  # Przeskalowanie wejścia
-        # set function that will be applied on each input
-        preprocessing_function=None,
-        # image data format, either "channels_first" or "channels_last"
-        data_format=None,
-        # fraction of images reserved for validation (strictly between 0 and 1)
-        validation_split=0)
-
-    # Compute quantities required for feature-wise normalization
-    # (std, mean, and principal components if ZCA whitening is applied).
-
-    val_datagen = ImageDataGenerator(rescale=1. / 255,
-                                     samplewise_center=True,  # set each sample mean to 0
-                                     samplewise_std_normalization=True,  # divide each input by its std
-                                     )
-    training_generator = Data_Generator_for_Shallowing(datagen.flow(x_train, y_train, batch_size=BATCH_SIZE), number_of_model_outputs)
-    validation_generator = Data_Generator_for_Shallowing(val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE), number_of_model_outputs)
+                                                                                                # dokładność się nie zwiększa
 
 
     cutted_model.fit_generator(
-        training_generator,  # Podawanie danych uczących
+        generators_for_training.get_train_data_generator_flow(batch_size=batch_size),  # Podawanie danych uczących
         verbose=1,
-        steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
         epochs=10000,  # ilość epok treningu
         callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
-        validation_steps=VALIDATION_SIZE // BATCH_SIZE,
         workers=4,
-        validation_data=validation_generator,
+        validation_data=generators_for_training.get_validation_data_generator_flow(batch_size=batch_size),
         use_multiprocessing=True,
         shuffle=True,
-        # initial_epoch=1       # Wskazanie od której epoki rozpocząć uczenie
-        # max_queue_size=2
     )
 
     K.clear_session()
+
     cutted_model = NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
 
-    test_generator = ImageDataGenerator(rescale=1. / 255,
-                                        samplewise_center=True,  # set each sample mean to 0
-                                        samplewise_std_normalization=True,  # divide each input by its std
-                                        )
-
-    test_generator = Data_Generator_for_Shallowing(val_datagen.flow(x_test, y_test, batch_size=BATCH_SIZE), number_of_model_outputs)
-    # keras.backend.get_session().run(tf.global_variables_initializer())
     scores = cutted_model.evaluate_generator(
-        test_generator,
-        steps=VALIDATION_SIZE // BATCH_SIZE,
+        generators_for_training.get_test_data_generator_flow(batch_size=batch_size),
         verbose=1,
     )
 
@@ -493,8 +438,10 @@ def calculate_the_values_in_the_range(min: float, max: float, increase_value_per
     return values_in_range
 
 
-def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
-    """Metoda Dokonująca transferu danych"""
+def knowledge_distillation(path_to_shallowed_model,
+                           path_to_original_model,
+                           generators_for_training: GeneratorsStorage):
+    """Metoda dokonująca transferu danych"""
 
     print('Knowledge distillation')
 
@@ -517,22 +464,12 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
     temperature = 6
 
-    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
-
-    generator = ImageDataGenerator(rescale=1. / 255,
-                                   samplewise_center=True,  # set each sample mean to 0
-                                   samplewise_std_normalization=True  # divide each input by its std
-                                   )
-
-    training_gen = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_train, y_train, batch_size=64),
-                                                            path_to_weights=dir_to_original_model,
+    training_gen = DataGenerator_for_knowledge_distillation(generator=generators_for_training.get_train_data_generator_flow(batch_size=64, shuffle=True),
+                                                            path_to_weights=path_to_original_model,
                                                             shuffle=True)
-    validation_gen = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_validation, y_validation, batch_size=8),
-                                                              path_to_weights=dir_to_original_model,
+    validation_gen = DataGenerator_for_knowledge_distillation(generator=generators_for_training.get_validation_data_generator_flow(batch_size=8, shuffle=True),
+                                                              path_to_weights=path_to_original_model,
                                                               shuffle=True)
-
-    # validation_gen = DG_for_kd(x_data_name='x_validation', data_dir='data/CIFAR10.h5',
-    #                            dir_to_weights=dir_to_original_model, **params)
 
     K.clear_session()
 
@@ -550,11 +487,8 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
 
     shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
 
-    # shallowed_model.load_weights(path_to_original_model, by_name=True)
-    # shallowed_model.load_weights('Zapis modelu/19-05-08 18-39/weights-improvement-28-1.75.hdf5', by_name=True)
     shallowed_model.summary()
 
-    # shallowed_model.load_weights(dir_to_original_model, by_name=True)
     optimizer_SGD = SGD(lr=0.1, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
                             loss=knowledge_distillation_loos(alpha_const=0.95, temperature=temperature),
@@ -572,25 +506,20 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
                                   max_queue_size=1
                                   )
 
-    # shallowed_model.save('Zapis modelu/shallowed_model.h5')
 
-
-    # original_model.compile(SGD, loss='categorical_crossentropy', metrics=['accuracy'])
-    # shallowed_model = Model(inputs=shallowed_model.inputs, outputs=shallowed_model.outputs[0])
     shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=[accuracy,
                                      categorical_crossentropy_metric])
-    # Create_NN_graph.create_NN_graph(shallowed_model, name='temp')
-    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
-    test_generator = DataGenerator_for_knowledge_distillation(generator=generator.flow(x_test, y_test, batch_size=128),
-                                                              path_to_weights=dir_to_original_model,
+
+
+    test_generator = DataGenerator_for_knowledge_distillation(generator=generators_for_training.get_test_data_generator_flow(batch_size=128, shuffle=True),
+                                                              path_to_weights=path_to_original_model,
                                                               shuffle=True)
 
     scores = shallowed_model.evaluate_generator(test_generator)
+
     print(scores)
     print('Test loss:', scores[2])
     print('Test accuracy:', scores[1])
-
-
 
 
 if __name__ == '__main__':
@@ -600,11 +529,36 @@ if __name__ == '__main__':
     optimalize_network_structure = True
     
     if test is True:
+        training_data = NNLoader.load_CIFAR10()
+
+        datagen = ImageDataGenerator(
+            samplewise_center=True,  # set each sample mean to 0
+            samplewise_std_normalization=True,  # divide each input by its std
+            width_shift_range=4,
+            height_shift_range=4,
+            fill_mode='nearest',
+            cval=0.,  # value used for fill_mode = "constant"
+            horizontal_flip=True,  # randomly flip images
+            rescale=1. / 255,  # Przeskalowanie wejścia
+            )
+
+
+        train_and_val_datagen = ImageDataGenerator(rescale=1. / 255,
+                                                   samplewise_center=True,  # set each sample mean to 0
+                                                   samplewise_std_normalization=True,  # divide each input by its std
+                                                   )
+
+        generators_for_training = GeneratorsStorage(datagen, train_and_val_datagen, train_and_val_datagen, training_data)
+
+
         assesing_conv_layers(path_to_model=path_to_original_model,
+                             generators_for_training=generators_for_training,
                              clasificators_trained_at_one_time=32,
                              filters_in_grup_after_division=1,
                              start_from_conv_layer=1,
                              resume_testing=False)
+
+
 
     if optimalize_network_structure is True:
         model = load_model(path_to_original_model)
@@ -623,6 +577,25 @@ if __name__ == '__main__':
         save_model(shallowed_model, filepath=path_to_shallowed_model)
         K.clear_session()
 
+        generator = ImageDataGenerator(rescale=1. / 255,
+                                       samplewise_center=True,  # set each sample mean to 0
+                                       samplewise_std_normalization=True  # divide each input by its std
+                                       )
+
+        training_data = NNLoader.load_CIFAR10()
+
+
+        # arguments = {
+        #     'class_mode': 'binary',
+        #     'classes': ['ben', 'mal'],
+        #     'target_size': (224, 224)
+        # }
+
+        generators_for_training = GeneratorsStorage(generator, generator, generator, training_data,
+                                                    flow_from_directory=False)
+
+
         knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
-                               dir_to_original_model=path_to_original_model)
+                               path_to_original_model=path_to_original_model,
+                               generators_for_training=generators_for_training)
 

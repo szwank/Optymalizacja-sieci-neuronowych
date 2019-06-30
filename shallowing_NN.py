@@ -16,7 +16,7 @@ from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge
 import json
 from custom_loss_function import knowledge_distillation_loos
 from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
-from utils.File_menager import FileManager
+from utils.FileMenager import FileManager
 
 
 def check_weights_was_changed(old_model, new_model):

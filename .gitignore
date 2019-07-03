@@ -8,6 +8,7 @@ Prace naukowe/**
 !Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5
 Zapis modelu-uciete/**
 __pycache__/**
+utils/__pycache__/**
 data/**
 code/Zapis modelu/**
 NetworkA/**

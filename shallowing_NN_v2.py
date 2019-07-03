@@ -310,17 +310,18 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsSto
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
         filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_loss:.2f}.hdf5", monitor='val_loss',
         save_best_only=True, period=5, save_weights_only=False)
-    earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
-                                                                                                # dokładność się nie zwiększa
+    earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
 
     cutted_model.fit_generator(
-        generators_for_training.get_train_data_generator_flow(batch_size=batch_size),  # Podawanie danych uczących
+        generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
+                                                              shuffle=True),
         verbose=1,
         epochs=10000,  # ilość epok treningu
         callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
         workers=4,
-        validation_data=generators_for_training.get_validation_data_generator_flow(batch_size=batch_size),
+        validation_data=generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
+                                                                                   shuffle=False),
         use_multiprocessing=True,
         shuffle=True,
     )
@@ -330,7 +331,8 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsSto
     cutted_model = NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
 
     scores = cutted_model.evaluate_generator(
-        generators_for_training.get_test_data_generator_flow(batch_size=batch_size),
+        generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
+                                                             shuffle=False),
         verbose=1,
     )
 

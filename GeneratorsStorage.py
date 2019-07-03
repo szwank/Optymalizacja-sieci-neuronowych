@@ -5,18 +5,22 @@ class GeneratorsStorage:
     """Class for storage generators needed for training neural network."""
 
     def __init__(self, training_generator, validation_generator,
-                 test_generator, training_data: TrainingData, flow_from_directory=False,
+                 test_generator, flow_from_directory, training_data: TrainingData = None,
                  path_to_train_data=None, path_to_validation_data=None, path_to_test_data=None,
                  classes=None, target_size=None, class_mode=None):
-        self.training_data = training_data
+
         self.train_data_generator = training_generator
         self.validation_data_generator = validation_generator
         self.test_data_generator = test_generator
 
         self.flow_from_directory = flow_from_directory
 
-        if path_to_test_data is True and (path_to_test_data, path_to_train_data, path_to_validation_data) is None:
-            raise ValueError("Setup all 3 paths to data.")
+        if flow_from_directory is True and None in (path_to_test_data, path_to_train_data, path_to_validation_data):
+            raise ValueError("For flow from directory set all 3 paths to data.")
+        if flow_from_directory is False and path_to_train_data is None:
+            raise ValueError("For flow from loaded data set training data.")
+
+        self.training_data = training_data
 
         self.path_to_train_data = path_to_train_data
         self.path_to_validation_data = path_to_validation_data

@@ -196,6 +196,7 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsStora
 
     print('Testowanie warstw konwolucyjnych')
     model = load_model(path_to_model)
+    number_of_classes = model.output_shape[1]
     model_hash = NNHasher.hash_model(model)
     score_file_name = model_hash + 'v2'
 
@@ -254,21 +255,21 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsStora
                         for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
                             layer.trainable = False
 
-                        cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=10)
+                        cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=number_of_classes)
                         cutted_model.load_weights(path_to_model, by_name=True)
                         cutted_model.summary()
 
-                        scores = train_and_asses_network(cutted_model, BATCH_SIZE, count_conv_layer)
+                        scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training, batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
                         add_partial_score_to_file(score=scores, file_name=score_file_name, number_of_trained_clasificator=count_conv_layer)
                         K.clear_session()
 
                 else:
-                    cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=10)
+                    cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=number_of_classes)
                     cutted_model.load_weights(path_to_model, by_name=True)
                     cutted_model.summary()
 
-                    scores = train_and_asses_network(cutted_model, x, y, BATCH_SIZE, count_conv_layer)
+                    scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training, batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
                     add_partial_score_to_file(score=scores, file_name=score_file_name,
                                               number_of_trained_clasificator=count_conv_layer)
@@ -306,10 +307,10 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsSto
     learning_rate_regulation = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=7, verbose=1,
                                                                  mode='auto', cooldown=3, min_lr=0.0005,
                                                                  min_delta=0.001)
-    tensorBoard = TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
+    #tensorBoard = TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
         filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_loss:.2f}.hdf5", monitor='val_loss',
-        save_best_only=True, period=5, save_weights_only=False)
+        save_best_only=True, period=6, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
 
@@ -318,7 +319,7 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsSto
                                                               shuffle=True),
         verbose=1,
         epochs=10000,  # ilość epok treningu
-        callbacks=[tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
+        callbacks=[ModelCheckpoint, earlyStopping, learning_rate_regulation],
         workers=4,
         validation_data=generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
                                                                                    shuffle=False),

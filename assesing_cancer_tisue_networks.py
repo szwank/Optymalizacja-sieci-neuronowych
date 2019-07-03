@@ -7,7 +7,7 @@ train = True
 validation = False
 
 
-if training = True:
+if train is True:
     for zbior in range(1, 5):
         path = os.path.join('NetworkA', 'fold' + str(zbior))
         network_name = os.listdir(path)[0]

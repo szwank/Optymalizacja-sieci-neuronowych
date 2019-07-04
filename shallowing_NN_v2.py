@@ -9,22 +9,18 @@ import datetime
 import os
 from NNModifier import NNModifier
 from NNLoader import NNLoader
-from Create_NN_graph import Create_NN_graph
 from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
 from custom_loss_function import knowledge_distillation_loos
 from utils.FileMenager import FileManager
 from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
-from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 import math
 import time
 from scipy import interpolate
 import numpy as np
-from GeneratorsStorage import GeneratorsStorage
-from DataStorage import DataStorage
-from TrainingData import TrainingData
-
+from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
+from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFromMemory
 
 def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
@@ -190,7 +186,7 @@ def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int,):
     layer_number = return_layer_number_of_chosen_conv_layer(model, with_conv_layer)
     return model["config"]["layers"][layer_number]['config']['filters']
 
-def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsStorage, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
+def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowStorage, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
                          filters_in_grup_after_division=2, resume_testing=False):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
@@ -277,7 +273,7 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsStora
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
 
-def train_and_asses_network(cutted_model, generators_for_training: GeneratorsStorage, batch_size, model_ID):
+def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlowStorage, batch_size, model_ID):
 
     optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
 
@@ -313,29 +309,34 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsSto
         save_best_only=True, period=6, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
+    train_generator = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
+                                                              shuffle=True)
 
-    cutted_model.fit_generator(
-        generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
-                                                              shuffle=True),
-        verbose=1,
-        epochs=10000,  # ilość epok treningu
-        callbacks=[ModelCheckpoint, earlyStopping, learning_rate_regulation],
-        workers=4,
-        validation_data=generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
-                                                                                   shuffle=False),
-        use_multiprocessing=True,
-        shuffle=True,
+    validation_generator = generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
+                                                                                   shuffle=False)
+
+    cutted_model.fit_generator(train_generator,
+                               steps_per_epoch=len(train_generator),
+                               verbose=1,
+                               epochs=1,  # ilość epok treningu
+                               callbacks=[modelCheckPoint, earlyStopping, learning_rate_regulation],
+                                workers=4,
+                                validation_data=validation_generator,
+                                validation_steps=len(validation_generator),
+                                use_multiprocessing=False,
+                                shuffle=True,
     )
 
     K.clear_session()
 
     cutted_model = NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
 
-    scores = cutted_model.evaluate_generator(
-        generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
-                                                             shuffle=False),
-        verbose=1,
-    )
+    test_generator = generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
+                                                             shuffle=False)
+    scores = cutted_model.evaluate_generator(test_generator,
+                                             steps=len(test_generator),
+                                             verbose=1,
+                                             )
 
     K.clear_session()
     print(scores)
@@ -444,7 +445,7 @@ def calculate_the_values_in_the_range(min: float, max: float, increase_value_per
 
 def knowledge_distillation(path_to_shallowed_model,
                            path_to_original_model,
-                           generators_for_training: GeneratorsStorage):
+                           generators_for_training: GeneratorsFlowStorage):
     """Metoda dokonująca transferu danych"""
 
     print('Knowledge distillation')
@@ -534,6 +535,7 @@ if __name__ == '__main__':
     
     if test is True:
         training_data = NNLoader.load_CIFAR10()
+        training_data.get_training_outputs()
 
         datagen = ImageDataGenerator(
             samplewise_center=True,  # set each sample mean to 0
@@ -552,7 +554,7 @@ if __name__ == '__main__':
                                                    samplewise_std_normalization=True,  # divide each input by its std
                                                    )
 
-        generators_for_training = GeneratorsStorage(datagen, train_and_val_datagen, train_and_val_datagen, training_data)
+        generators_for_training = GeneratorsFlowStorage(datagen, train_and_val_datagen, train_and_val_datagen, GeneratorDataLoaderFromMemory(training_data, repeat_labels=32))
 
 
         assesing_conv_layers(path_to_model=path_to_original_model,
@@ -595,8 +597,8 @@ if __name__ == '__main__':
         #     'target_size': (224, 224)
         # }
 
-        generators_for_training = GeneratorsStorage(generator, generator, generator, training_data,
-                                                    flow_from_directory=False)
+        generators_for_training = GeneratorsFlowStorage(generator, generator, generator, training_data,
+                                                        flow_from_directory=False)
 
 
         knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,

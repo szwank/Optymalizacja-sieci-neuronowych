@@ -21,6 +21,7 @@ from scipy import interpolate
 import numpy as np
 from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
 from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFromMemory
+from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 
 def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
@@ -261,6 +262,9 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
                         K.clear_session()
 
                 else:
+                    for layer in cutted_model.layers:
+                        layer.trainable = False
+
                     cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=number_of_classes)
                     cutted_model.load_weights(path_to_model, by_name=True)
                     cutted_model.summary()
@@ -311,9 +315,12 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
     train_generator = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
                                                               shuffle=True)
+    train_generator = Data_Generator_for_Shallowing(train_generator, number_of_model_outputs)
 
     validation_generator = generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
                                                                                    shuffle=False)
+
+    validation_generator = Data_Generator_for_Shallowing(validation_generator, number_of_model_outputs)
 
     cutted_model.fit_generator(train_generator,
                                steps_per_epoch=len(train_generator),
@@ -333,6 +340,8 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
     test_generator = generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
                                                              shuffle=False)
+    test_generator = Data_Generator_for_Shallowing(test_generator)
+    
     scores = cutted_model.evaluate_generator(test_generator,
                                              steps=len(test_generator),
                                              verbose=1,
@@ -554,7 +563,8 @@ if __name__ == '__main__':
                                                    samplewise_std_normalization=True,  # divide each input by its std
                                                    )
 
-        generators_for_training = GeneratorsFlowStorage(datagen, train_and_val_datagen, train_and_val_datagen, GeneratorDataLoaderFromMemory(training_data, repeat_labels=32))
+
+        generators_for_training = GeneratorsFlowStorage(datagen, train_and_val_datagen, train_and_val_datagen, GeneratorDataLoaderFromMemory(training_data))
 
 
         assesing_conv_layers(path_to_model=path_to_original_model,

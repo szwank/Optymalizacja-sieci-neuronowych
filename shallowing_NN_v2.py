@@ -282,7 +282,13 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
 
     number_of_model_outputs = len(cutted_model.outputs)
-    loss = ['categorical_crossentropy'] * number_of_model_outputs
+
+    if number_of_model_outputs is 2:
+        loss_function = 'binary_crossentropy'
+    else:
+        loss_function = 'categorical_crossentropy'
+
+    loss = [loss_function] * number_of_model_outputs
     loss_weights = [1.0/number_of_model_outputs] * number_of_model_outputs
 
     cutted_model.compile(optimizer,

@@ -1,6 +1,7 @@
 from shallowing_NN_v2 import assesing_conv_layers
 from keras.preprocessing.image import ImageDataGenerator
 from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
+from GeneratorStorage.GeneratorDataLoaderFromDisc import GeneratorDataLoaderFromDisc
 import os
 
 train = True
@@ -54,15 +55,16 @@ if train is True:
         validation_data_generator.fit(data[0])
         test_data_generator.fit(data[0])
 
-        generators_for_training = GeneratorsFlowStorage(training_generator=train_data_generator, validation_generator=validation_data_generator,
-                                                        test_generator=test_data_generator, flow_from_directory=True,
-                                                        path_to_train_data='data/' + str(zbior) + '/train',
+        data_loader = GeneratorDataLoaderFromDisc(path_to_training_data='data/' + str(zbior) + '/train',
                                                         path_to_validation_data='data/' + str(zbior) + '/valid',
                                                         path_to_test_data='data/' + str(zbior) + '/test',
                                                         classes=['ben', 'mal'],
                                                         target_size=(224, 224),
                                                         class_mode='binary'
                                                         )
+
+        generators_for_training = GeneratorsFlowStorage(training_generator=train_data_generator, validation_generator=validation_data_generator,
+                                                        test_generator=test_data_generator, generator_data_loader=data_loader)
 
 
         assesing_conv_layers(path_to_model,

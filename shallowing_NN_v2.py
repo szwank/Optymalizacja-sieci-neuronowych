@@ -341,7 +341,7 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     test_generator = generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
                                                              shuffle=False)
     test_generator = Data_Generator_for_Shallowing(test_generator)
-    
+
     scores = cutted_model.evaluate_generator(test_generator,
                                              steps=len(test_generator),
                                              verbose=1,

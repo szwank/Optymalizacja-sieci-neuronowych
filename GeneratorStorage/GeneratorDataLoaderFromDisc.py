@@ -27,34 +27,30 @@ class GeneratorDataLoaderFromDisc(GeneratorDataLoader):
                 "Type_of_generator argument is incorrect. Correct valuers are 'train', 'validation', 'test'.")
 
     def get_train_flow(self, data_generator, batch_size, shuffle):
-        generator = data_generator.flow_from_directory(self.path_to_training_data,
+        return data_generator.flow_from_directory(self.path_to_training_data,
                                                                        class_mode=self.class_mode,
                                                                        classes=self.classes,
                                                                        target_size=self.target_size,
                                                                        batch_size=batch_size,
                                                                        shuffle=shuffle)
-        generator.y = [generator.y] * self.repeat_labels
-        return generator
 
     def get_validation_flow(self, data_generator, batch_size, shuffle):
-        generator = data_generator.flow_from_directory(self.path_to_validation_data,
+        return data_generator.flow_from_directory(self.path_to_validation_data,
                                                                        class_mode=self.class_mode,
                                                                        classes=self.classes,
                                                                        target_size=self.target_size,
                                                                        batch_size=batch_size,
                                                                        shuffle=shuffle)
 
-        generator.y = np.tile(generator.y, self.repeat_labels)
-        return generator
+
 
     def get_test_flow(self, data_generator, batch_size, shuffle):
-        generator = data_generator.flow_from_directory(self.path_to_test_data,
+        retunr = data_generator.flow_from_directory(self.path_to_test_data,
                                                                        class_mode=self.class_mode,
                                                                        classes=self.classes,
                                                                        target_size=self.target_size,
                                                                        batch_size=batch_size,
                                                                        shuffle=shuffle)
 
-        generator.y = np.tile(generator.y, self.repeat_labels)
-        return generator
+
 

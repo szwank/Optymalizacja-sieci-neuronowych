@@ -9,6 +9,7 @@ Prace naukowe/**
 Zapis modelu-uciete/**
 __pycache__/**
 utils/__pycache__/**
+GeneratorStorage/__pycache__/**
 data/**
 code/Zapis modelu/**
 NetworkA/**

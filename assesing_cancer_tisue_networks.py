@@ -69,6 +69,7 @@ if train is True:
 
         assesing_conv_layers(path_to_model,
                              generators_for_training=generators_for_training,
+                             size_of_clasificator=(1024, 1024, 1),
                              BATCH_SIZE=64,
                              clasificators_trained_at_one_time=64,
                              filters_in_grup_after_division=1,

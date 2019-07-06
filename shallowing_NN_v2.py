@@ -187,7 +187,8 @@ def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int,):
     layer_number = return_layer_number_of_chosen_conv_layer(model, with_conv_layer)
     return model["config"]["layers"][layer_number]['config']['filters']
 
-def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowStorage, start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
+def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowStorage, size_of_clasificator,
+                         start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
                          filters_in_grup_after_division=2, resume_testing=False):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
@@ -252,7 +253,7 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
                         for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
                             layer.trainable = False
 
-                        cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=number_of_classes)
+                        cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, size_of_clasifier=size_of_clasificator)
                         cutted_model.load_weights(path_to_model, by_name=True)
                         cutted_model.summary()
 
@@ -265,7 +266,7 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
                     for layer in cutted_model.layers:
                         layer.trainable = False
 
-                    cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, number_of_classes=number_of_classes)
+                    cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, size_of_clasifier=size_of_clasificator)
                     cutted_model.load_weights(path_to_model, by_name=True)
                     cutted_model.summary()
 
@@ -283,7 +284,12 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
     number_of_model_outputs = len(cutted_model.outputs)
 
-    if number_of_model_outputs is 2:
+    number_of_category = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
+                                                                               shuffle=True)[0]
+
+    number_of_category = number_of_category[1].shape[-1]  # geting shape of data
+
+    if number_of_category is 2:
         loss_function = 'binary_crossentropy'
     else:
         loss_function = 'categorical_crossentropy'

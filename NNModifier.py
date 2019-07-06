@@ -1,7 +1,7 @@
 import tensorflow.keras as keras
 import tensorflow as tf
 from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Softmax, Lambda,\
-    BatchNormalization, ReLU, concatenate
+    BatchNormalization, ReLU, concatenate, LeakyReLU
 from keras import regularizers
 from keras.models import Model, model_from_json
 from keras.utils import plot_model
@@ -13,6 +13,7 @@ import numpy as np
 import json
 import os
 import keras.backend as K
+
 
 
 class NNModifier:
@@ -377,7 +378,7 @@ class NNModifier:
         return model
 
     @staticmethod
-    def add_clssifiers_to_the_all_ends(model, number_of_classes):
+    def add_clssifiers_to_the_all_ends(model, size_of_clasifier: tuple):
         model.save('temp/model.h5')
         activation_outputs = []
         for i, output in enumerate(model.output):
@@ -385,9 +386,15 @@ class NNModifier:
             y = output
             y = Lambda(lambda x: K.stop_gradient(x))(y)
             y = Flatten()(y)
-            y = Dense(number_of_classes, name='Added_classifier_'+str(i))(y)
-            y = BatchNormalization(name='Added_normalization_layer_'+str(i))(y)
-            y = Softmax(name='Added_Softmax_'+str(i))(y)
+            for j in range(len(size_of_clasifier)):
+                y = Dense(size_of_clasifier[j], name='Added_classifier_' + str(i))(y)
+                y = BatchNormalization(name='Added_normalization_layer_'+str(i))(y)
+
+                if j > len(size_of_clasifier)-1:
+                    y = Softmax(name='Added_Softmax_' + str(i))(y)
+                else:
+                    y = LeakyReLU('Added_LeakyReLU ' + str(i))(y)
+
             activation_outputs.append(y)
 
         # output = concatenate(activation_outputs)

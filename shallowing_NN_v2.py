@@ -581,6 +581,7 @@ if __name__ == '__main__':
 
         assesing_conv_layers(path_to_model=path_to_original_model,
                              generators_for_training=generators_for_training,
+                             size_of_clasificator=(10),
                              clasificators_trained_at_one_time=32,
                              filters_in_grup_after_division=1,
                              start_from_conv_layer=1,

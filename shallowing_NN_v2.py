@@ -284,12 +284,10 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
     number_of_model_outputs = len(cutted_model.outputs)
 
-    number_of_category = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
-                                                                               shuffle=True)[0]
+    number_of_classes = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
+                                                                               shuffle=True).num_classes
 
-    number_of_category = number_of_category[1].shape[-1]  # geting shape of data
-
-    if number_of_category is 2:
+    if number_of_classes is 2:
         loss_function = 'binary_crossentropy'
     else:
         loss_function = 'categorical_crossentropy'
@@ -337,7 +335,7 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     cutted_model.fit_generator(train_generator,
                                steps_per_epoch=len(train_generator),
                                verbose=1,
-                               epochs=1,  # ilość epok treningu
+                               epochs=10000,  # ilość epok treningu
                                callbacks=[modelCheckPoint, earlyStopping, learning_rate_regulation],
                                 workers=4,
                                 validation_data=validation_generator,
@@ -350,12 +348,12 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
     cutted_model = NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
 
-    test_generator = generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
-                                                             shuffle=False)
-    test_generator = Data_Generator_for_Shallowing(test_generator)
+    # test_generator = generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
+    #                                                          shuffle=False)
+    # test_generator = Data_Generator_for_Shallowing(test_generator)
 
-    scores = cutted_model.evaluate_generator(test_generator,
-                                             steps=len(test_generator),
+    scores = cutted_model.evaluate_generator(validation_generator,
+                                             steps=len(validation_generator),
                                              verbose=1,
                                              )
 

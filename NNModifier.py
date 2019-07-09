@@ -399,13 +399,13 @@ class NNModifier:
             y = Lambda(lambda x: K.stop_gradient(x))(y)
             y = Flatten()(y)
             for j in range(len(size_of_clasifier)):
-                y = Dense(size_of_clasifier[j], name='Added_classifier_' + str(i))(y)
-                y = BatchNormalization(name='Added_normalization_layer_'+str(i))(y)
+                y = Dense(size_of_clasifier[j], name='Added_classifier_' + str(i) + '_' + str(j))(y)
+                y = BatchNormalization(name='Added_normalization_layer_' + str(i) + '_' + str(j))(y)
 
-                if j > len(size_of_clasifier)-1:
-                    y = Softmax(name='Added_Softmax_' + str(i))(y)
+                if j+1 > len(size_of_clasifier)-1:
+                    y = Softmax(name='Added_Softmax_' + str(i) + '_' + str(j))(y)
                 else:
-                    y = LeakyReLU('Added_LeakyReLU ' + str(i))(y)
+                    y = LeakyReLU(0.0000005, name='Added_LeakyReLU_' + str(i) + '_' + str(j))(y)
 
             activation_outputs.append(y)
 

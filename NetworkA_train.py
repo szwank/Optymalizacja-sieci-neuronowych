@@ -1,10 +1,10 @@
 # %%
 import os
-# os.environ["CUDA_VISIBLE_DEVICES"]="1"
-import matplotlib.pyplot as plt
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
+# import matplotlib.pyplot as plt
 import numpy as np
-from keras.applications.vgg19 import VGG19
-from keras.applications.resnet50 import ResNet50
+# from keras.applications.vgg19 import VGG19
+# from keras.applications.resnet50 import ResNet50
 
 import keras
 from keras.optimizers import SGD, RMSprop
@@ -214,13 +214,13 @@ def main():
                       nesterov=True)
             model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])
             model.fit_generator(train_generator,
-                                steps_per_epoch=24563 // BATCH_SIZE,
+                                steps_per_epoch=len(train_generator),
                                 epochs=5000,
                                 validation_data=validation_generator,
-                                nb_val_samples=200,
+                                validation_steps=len(validation_generator),
                                 callbacks=training_callbacks,
-                                use_multiprocessing=True,
-                                workers=1)
+                                use_multiprocessing=False,
+                                workers=4)
 
             test_data = test_data_generator.flow_from_directory('data/' + str(zbior) + '/test',
                                                                                  class_mode='binary',

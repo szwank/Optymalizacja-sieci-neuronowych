@@ -101,7 +101,10 @@ class NNModifier:
             y = BatchNormalization(name='Added_normalization_layer_' + str(j))(y)
 
             if j + 1 > len(size_of_clasifier) - 1:
-                y = Softmax(name='Added_Softmax_' + str(j))(y)
+                if size_of_clasifier[-1] is 1:
+                    y = Activation('sigmoid')(y)
+                else:
+                    y = Softmax(name='Added_Softmax_' + str(j))(y)
             else:
                 y = LeakyReLU(0.2, name='Added_LeakyReLU_' + str(j))(y)
 
@@ -403,7 +406,10 @@ class NNModifier:
                 y = BatchNormalization(name='Added_normalization_layer_' + str(i) + '_' + str(j))(y)
 
                 if j+1 > len(size_of_clasifier)-1:
-                    y = Softmax(name='Added_Softmax_' + str(i) + '_' + str(j))(y)
+                    if size_of_clasifier[-1] is 1:
+                        y = Activation('sigmoid', name='Added_Sigmoid_' + str(i) + '_' + str(j))(y)
+                    else:
+                        y = Softmax(name='Added_Softmax_' + str(i) + '_' + str(j))(y)
                 else:
                     y = LeakyReLU(0.0000005, name='Added_LeakyReLU_' + str(i) + '_' + str(j))(y)
 

@@ -95,15 +95,15 @@ class NNModifier:
 
         y = model.output
         y = Lambda(lambda x: K.stop_gradient(x))(y)
-        y = Flatten()(y)
+        y = Flatten(name='Added_flatten_layer')(y)
         for j in range(len(size_of_clasifier)):
-            y = Dense(size_of_clasifier[j], name='Added_classifier')(y)
-            y = BatchNormalization(name='Added_normalization_layer')(y)
+            y = Dense(size_of_clasifier[j], name='Added_classifier_' + str(j))(y)
+            y = BatchNormalization(name='Added_normalization_layer_' + str(j))(y)
 
-            if j > len(size_of_clasifier) - 1:
-                y = Softmax(name='Added_Softmax')(y)
+            if j + 1 > len(size_of_clasifier) - 1:
+                y = Softmax(name='Added_Softmax_' + str(j))(y)
             else:
-                y = LeakyReLU('Added_LeakyReLU')(y)
+                y = LeakyReLU(0.0000005, name='Added_LeakyReLU_' + str(j))(y)
 
         model = Model(model.input, y)
         model.load_weights('temp/model.h5', by_name=True)

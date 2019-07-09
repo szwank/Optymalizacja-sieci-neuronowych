@@ -248,8 +248,7 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
                 for layer in cutted_model.layers:
                     layer.trainable = False
 
-                cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model,
-                                                                         size_of_clasifier=size_of_clasificator)
+                cutted_model = NNModifier.add_classifier_to_end(cutted_model, size_of_clasifier=size_of_clasificator)
                 cutted_model.summary()
 
                 scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,

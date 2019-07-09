@@ -89,15 +89,27 @@ class NNModifier:
             return model
 
     @staticmethod
-    def add_classifier_to_end(model, number_of_neurons=512, number_of_classes=10, weight_decay=0.0001):
+    def add_classifier_to_end(model, size_of_clasifier):
+
+        model.save('temp/model.h5')
 
         y = model.output
         y = Lambda(lambda x: K.stop_gradient(x))(y)
         y = Flatten()(y)
-        y = Dense(number_of_classes, name='Added_classifier_2')(y)
-        y = BatchNormalization(name='Added_normalization_layer')(y)
-        y = Softmax(name='Added_Softmax')(y)
-        return Model(model.input, y)
+        for j in range(len(size_of_clasifier)):
+            y = Dense(size_of_clasifier[j], name='Added_classifier')(y)
+            y = BatchNormalization(name='Added_normalization_layer')(y)
+
+            if j > len(size_of_clasifier) - 1:
+                y = Softmax(name='Added_Softmax')(y)
+            else:
+                y = LeakyReLU('Added_LeakyReLU')(y)
+
+        model = Model(model.input, y)
+        model.load_weights('temp/model.h5', by_name=True)
+        os.remove('temp/model.h5')
+
+        return model
 
 
     @staticmethod
@@ -397,10 +409,10 @@ class NNModifier:
 
             activation_outputs.append(y)
 
-        # output = concatenate(activation_outputs)
+        model = Model(model.input, activation_outputs)
         model.load_weights('temp/model.h5', by_name=True)
         os.remove('temp/model.h5')
-        model = Model(model.input, activation_outputs)
+
         return model
 
     @staticmethod

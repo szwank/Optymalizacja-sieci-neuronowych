@@ -1,4 +1,4 @@
-from shallowing_NN_v2 import assesing_conv_filters
+from shallowing_NN_v2 import assesing_conv_filters, assesing_conv_layers
 from keras.preprocessing.image import ImageDataGenerator
 from keras.models import load_model
 from keras.optimizers import SGD
@@ -83,7 +83,7 @@ if train is True:
         #                                          )
         #
         # print(scores)
-        assesing_conv_filters(path_to_model,
+        assesing_conv_layers(path_to_model,
                               generators_for_training=generators_for_training,
                               size_of_clasificator=(1024, 1024, 1),
                               BATCH_SIZE=128,

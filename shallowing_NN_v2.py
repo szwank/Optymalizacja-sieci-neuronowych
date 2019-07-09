@@ -22,6 +22,7 @@ import numpy as np
 from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
 from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFromMemory
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
+import gc
 
 
 def compare_weights_in_models(model1, model2):
@@ -66,14 +67,8 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
     accuracy = score[middle_position:]
 
     if os.path.exists(file_name):
-        while 'json_string' not in locals():
-            try:
-                with open(file_name, "r") as file:
-                    json_string = file.read()
-                    file.close()
-                    time.sleep(0.5)
-            except:
-                pass
+        with open_text_file(file_name, "r", number_of_trials=100) as file:
+            json_string = file.read()
 
         dictionary = json.loads(json_string)
 
@@ -87,17 +82,9 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
     else:
         dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
 
-    writed_correctly = None
-
-    while writed_correctly is None:
-        try:
-            with open(file_name, "w") as file:
-                json_string = json.dumps(dictionary)
-                writed_correctly = file.write(json_string)
-                file.close()
-                time.sleep(0.5)
-        except:
-            writed_correctly = None
+    with open_text_file(file_name, "w", number_of_trials=100) as file:
+        json_string = json.dumps(dictionary)
+        file.write(json_string)
 
 
 def check_integrity_of_score_file(file_name: str, model: dict):
@@ -273,17 +260,13 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
                 cutted_model.load_weights(path_to_model, by_name=True)
                 cutted_model.summary()
 
-                cutted_model.save('temp/model.hdf5')
-                K.clear_session()
-                cutted_model = load_model('temp/model.hdf5')
-
-                # compare_weights_in_models(model, cutted_model)
+                cutted_model = clear_session_in_addition_to_model(cutted_model)
 
                 scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
                                                  batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
-                add_partial_score_to_file(score=scores, file_name=score_file_name,
-                                          number_of_trained_clasificator=count_conv_layer)
+                add_score_to_file(score=scores, file_name=score_file_name,
+                                          conv_layer_number=count_conv_layer)
                 K.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
@@ -318,7 +301,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                              "or assesing of any whole conv layer wasn't compleated run function with"
                              "resume_testing=False.".format(score_file_name))
 
-    del (model)
+    K.clear_session()
 
     count_conv_layer = 0  # Licznik warstw konwolucyjnych.
     number_of_layers_in_model = len(model_architecture["config"]["layers"])
@@ -339,16 +322,15 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                                                                           filters_in_grup_after_division=filters_in_grup_after_division)
                 cutted_model.summary()
 
-                del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
-
                 number_of_filters = number_of_filters_in_conv_layer(model_architecture, count_conv_layer)
                 number_of_iteration_per_the_conv_layer = math.ceil(
                     number_of_filters / clasificators_trained_at_one_time)
 
                 save_model(cutted_model, 'temp/model.hdf5')
+                K.clear_session()
 
                 if number_of_iteration_per_the_conv_layer > 1:  # potrzebne jeżeli ilość trewowanych klasyfikatorów
-                      # jest wieksza niż ilośc filtrów w warstwie
+                                                                # jest wieksza niż ilośc filtrów w warstwie
                     for j in range(number_of_iteration_per_the_conv_layer):
                         cutted_model = load_model('temp/model.hdf5')
                         print('number of clasificator set', j + 1, 'of', number_of_iteration_per_the_conv_layer)
@@ -373,6 +355,8 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                         cutted_model.load_weights(path_to_model, by_name=True)
                         cutted_model.summary()
 
+                        cutted_model = clear_session_in_addition_to_model(cutted_model)
+
                         scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
                                                          batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
@@ -381,6 +365,8 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                         K.clear_session()
 
                 else:
+                    cutted_model = load_model('temp/model.hdf5')
+
                     for layer in cutted_model.layers:
                         layer.trainable = False
 
@@ -388,6 +374,8 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                                                                              size_of_clasifier=size_of_clasificator)
                     cutted_model.load_weights(path_to_model, by_name=True)
                     cutted_model.summary()
+
+                    cutted_model = clear_session_in_addition_to_model(cutted_model)
 
                     scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
                                                      batch_size=BATCH_SIZE, model_ID=count_conv_layer)
@@ -397,6 +385,13 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                 K.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
+
+def clear_session_in_addition_to_model(model):
+    save_model(model, 'temp/model.hdf5')
+    K.clear_session()
+    gc.collect()
+    return load_model('temp/model.hdf5')
+
 
 
 def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlowStorage, batch_size, model_ID):

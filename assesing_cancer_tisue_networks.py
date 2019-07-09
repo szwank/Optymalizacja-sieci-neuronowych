@@ -85,7 +85,7 @@ if train is True:
         # print(scores)
         assesing_conv_layers(path_to_model,
                               generators_for_training=generators_for_training,
-                              size_of_clasificator=(1024, 1024, 1),
+                              size_of_clasificator=(100, 100, 1),
                               BATCH_SIZE=128,
                               resume_testing=False)
 

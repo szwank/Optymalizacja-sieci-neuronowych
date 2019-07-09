@@ -7,9 +7,9 @@ temp/**
 Prace naukowe/**
 !Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5
 Zapis modelu-uciete/**
-__pycache__/**
-utils/__pycache__/**
-GeneratorStorage/__pycache__/**
+#__pycache__/**
+#utils/__pycache__/**
+**/__pycache__/**
 data/**
 code/Zapis modelu/**
 NetworkA/**
@@ -28,3 +28,4 @@ testy1.py
 test networks.py
 *.tar.gz
 x
+*.pyc

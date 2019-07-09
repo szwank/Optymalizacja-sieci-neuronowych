@@ -1,5 +1,7 @@
-from shallowing_NN_v2 import assesing_conv_layers
+from shallowing_NN_v2 import assesing_conv_filters
 from keras.preprocessing.image import ImageDataGenerator
+from keras.models import load_model
+from keras.optimizers import SGD
 from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
 from GeneratorStorage.GeneratorDataLoaderFromDisc import GeneratorDataLoaderFromDisc
 import os
@@ -66,13 +68,34 @@ if train is True:
         generators_for_training = GeneratorsFlowStorage(training_generator=train_data_generator, validation_generator=validation_data_generator,
                                                         test_generator=test_data_generator, generator_data_loader=data_loader)
 
+        # model = load_model(path_to_model, compile=False)
+        # model.compile(SGD(0.01, 0.9, 0.1, True), loss='binary_crossentropy', metrics=['accuracy'])
+        #
+        # train_generator = generators_for_training.get_train_data_generator_flow(batch_size=64,
+        #                                                                         shuffle=True)
+        #
+        # validation_generator = generators_for_training.get_validation_data_generator_flow(batch_size=64,
+        #                                                                                   shuffle=False)
+        #
+        # scores = model.evaluate_generator(validation_generator,
+        #                                          steps=len(validation_generator),
+        #                                          verbose=1,
+        #                                          )
+        #
+        # print(scores)
+        assesing_conv_filters(path_to_model,
+                              generators_for_training=generators_for_training,
+                              size_of_clasificator=(1024, 1024, 1),
+                              BATCH_SIZE=128,
+                              resume_testing=False)
 
-        assesing_conv_layers(path_to_model,
-                             generators_for_training=generators_for_training,
-                             size_of_clasificator=(1024, 1024, 1),
-                             BATCH_SIZE=64,
-                             clasificators_trained_at_one_time=64,
-                             filters_in_grup_after_division=1,
-                             resume_testing=False)
+
+        # assesing_conv_filters(path_to_model,
+        #                       generators_for_training=generators_for_training,
+        #                       size_of_clasificator=(1024, 1024, 1),
+        #                       BATCH_SIZE=64,
+        #                       clasificators_trained_at_one_time=64,
+        #                       filters_in_grup_after_division=1,
+        #                       resume_testing=False)
 
 

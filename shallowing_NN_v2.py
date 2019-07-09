@@ -24,6 +24,26 @@ from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFr
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 
 
+def compare_weights_in_models(model1, model2):
+    lenght = min(len(model1.layers), len(model2.layers))
+    for i in range(lenght):
+        weights1 = model1.layers[i].get_weights()
+        weights2 = model2.layers[i].get_weights()
+
+        print(model1.layers[i].name)
+
+        if min(len(weights1), len(weights2)) > 1:
+            for j in range(min(len(weights1), len(weights2))):
+                result = np.array_equal(weights1[j], weights2[j])
+                print('Layer {}, part {}, result: {}'.format(i, j, result))
+        else:
+
+            result = np.array_equal(weights1, weights2)
+            print('Layer {}, result: {}'.format(i, result))
+
+        print('\n')
+
+
 def open_text_file(file_path: str, access_method: str = 'r', number_of_trials: int = 10):
     try:
         return open(file_path, access_method)
@@ -242,14 +262,22 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
             if start_from_conv_layer <= count_conv_layer:
                 print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
                 model = load_model(path_to_model)
-                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 2)  # i + 2 ponieważ trzeba uwzględnić
+                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 3)  # i + 2 ponieważ trzeba uwzględnić
                 # jeszcze warstwę normalizującą i ReLU
+
 
                 for layer in cutted_model.layers:
                     layer.trainable = False
 
                 cutted_model = NNModifier.add_classifier_to_end(cutted_model, size_of_clasifier=size_of_clasificator)
+                cutted_model.load_weights(path_to_model, by_name=True)
                 cutted_model.summary()
+
+                cutted_model.save('temp/model.hdf5')
+                K.clear_session()
+                cutted_model = load_model('temp/model.hdf5')
+
+                # compare_weights_in_models(model, cutted_model)
 
                 scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
                                                  batch_size=BATCH_SIZE, model_ID=count_conv_layer)
@@ -317,8 +345,10 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                 number_of_iteration_per_the_conv_layer = math.ceil(
                     number_of_filters / clasificators_trained_at_one_time)
 
+                save_model(cutted_model, 'temp/model.hdf5')
+
                 if number_of_iteration_per_the_conv_layer > 1:  # potrzebne jeżeli ilość trewowanych klasyfikatorów
-                    save_model(cutted_model, 'temp/model.hdf5')  # jest wieksza niż ilośc filtrów w warstwie
+                      # jest wieksza niż ilośc filtrów w warstwie
                     for j in range(number_of_iteration_per_the_conv_layer):
                         cutted_model = load_model('temp/model.hdf5')
                         print('number of clasificator set', j + 1, 'of', number_of_iteration_per_the_conv_layer)
@@ -370,7 +400,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
 
 
 def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlowStorage, batch_size, model_ID):
-    optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
+    optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
 
     number_of_model_outputs = len(cutted_model.outputs)
 

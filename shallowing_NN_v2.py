@@ -23,6 +23,20 @@ from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
 from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFromMemory
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 
+
+def open_text_file(file_path: str, access_method: str = 'r', number_of_trials: int = 10):
+    try:
+        return open(file_path, access_method)
+    except:
+        if number_of_trials > 0:
+            time.sleep(0.5)
+            number_of_trials -= 1
+            return open_text_file(file_path, access_method, number_of_trials)
+        else:
+            raise ValueError("Cannot open {}. The number of attempts to open file has been exceeded."
+                             " Check if name is correct.".format(file_path))
+
+
 def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
@@ -67,7 +81,7 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
 
 
 def check_integrity_of_score_file(file_name: str, model: dict):
-    file = open(file_name, 'r')
+    file = open_text_file(file_name, 'r', number_of_trials=10)
     json_string = file.read()
     file.close()
 
@@ -93,28 +107,27 @@ def check_integrity_of_score_file(file_name: str, model: dict):
         return broken_scores_in_conv_layers
 
 
-def add_score_to_file(score, file_name, number_of_trained_clasificator):
+def add_score_to_file(score, file_name, conv_layer_number):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
-    conv_layer_number = score[-1]
-    middle_position = int((len(score) - 2) / 2) + 1
-    loss = score[:middle_position]
-    accuracy = score[middle_position:]
+    loss = score[0]
+    accuracy = score[1]
 
     if os.path.exists(file_name):
-        file = open(file_name, "r")
+        file = open_text_file(file_name, "r", number_of_trials=100)
         json_string = file.read()
         dictionary = json.loads(json_string)
-        subordinate_dictionary = {str(conv_layer_number): {'loss': loss[1:], 'accuracy': accuracy[:-2]}}
+        subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
         dictionary.update(subordinate_dictionary)
         file.close()
     else:
-        dictionary = {str(conv_layer_number): {'loss': loss[1:], 'accuracy': accuracy[:-2]}}
+        dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
 
-    file = open(file_name, "w")
+    file = open_text_file(file_name, "w", number_of_trials=100)
     json_string = json.dumps(dictionary)
     file.write(json_string)
     file.close()
+
 
 def count_layer_by_name(model, key_world_in_name):
     counted_layers = 0
@@ -123,6 +136,7 @@ def count_layer_by_name(model, key_world_in_name):
             counted_layers += 1
 
     return counted_layers
+
 
 def return_layer_number_of_chosen_conv_layer(model: dict, with_conv_layer: int):
     conv_layer_counter = 0
@@ -153,7 +167,8 @@ def check_on_with_layer_testing_was_stopped(file_name: str, model: dict):
     return number_of_last_conv_checked
 
 
-def check_if_assesing_chosen_layer_was_complited(file_name: str, model: dict, with_conv_layer: int, filters_in_groups_after_division: int):
+def check_if_assesing_chosen_layer_was_complited(file_name: str, model: dict, with_conv_layer: int,
+                                                 filters_in_groups_after_division: int):
     file = open(file_name, 'r')
     json_string = file.read()
     file.close()
@@ -163,7 +178,8 @@ def check_if_assesing_chosen_layer_was_complited(file_name: str, model: dict, wi
     layer_number = return_layer_number_of_chosen_conv_layer(model, with_conv_layer)
     number_of_filters_in_last_checked_conv_layer = model["config"]["layers"][layer_number]['config']['filters']
 
-    if len(dictionary[str(with_conv_layer)]['accuracy']) == number_of_filters_in_last_checked_conv_layer/filters_in_groups_after_division:
+    if len(dictionary[str(with_conv_layer)][
+               'accuracy']) == number_of_filters_in_last_checked_conv_layer / filters_in_groups_after_division:
         return True
     else:
         return False
@@ -183,13 +199,72 @@ def remove_scores_of_last_conv_layer(file_name: str):
     file.write(json_str)
     file.close()
 
-def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int,):
+
+def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int, ):
     layer_number = return_layer_number_of_chosen_conv_layer(model, with_conv_layer)
     return model["config"]["layers"][layer_number]['config']['filters']
 
+
 def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowStorage, size_of_clasificator,
-                         start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
-                         filters_in_grup_after_division=2, resume_testing=False):
+                         start_from_conv_layer=1, BATCH_SIZE=256, resume_testing=False):
+    """Function for testing whole conv layers. The increase of accuracy ow conv layers is checking."""
+    print('Testowanie warstw konwolucyjnych')
+    model = load_model(path_to_model)
+    number_of_classes = model.output_shape[1]
+    model_hash = NNHasher.hash_model(model)
+    score_file_name = model_hash + 'v2'
+
+    model.summary()
+
+    model_architecture = model.to_json(indent=4)
+    model_architecture = json.loads(model_architecture)
+
+    if resume_testing is True:
+        if os.path.exists(score_file_name):
+            start_from_conv_layer = check_on_with_layer_testing_was_stopped(score_file_name, model_architecture)
+            start_from_conv_layer += 1
+        else:
+            raise ValueError("There is no file {}. Check if file name is correct. If optymalization wasn't run before"
+                             "or assesing of any conv layer wasn't compleated run function with"
+                             "resume_testing=False.".format(score_file_name))
+
+    del (model)
+
+    count_conv_layer = 0  # Licznik warstw konwolucyjnych.
+    number_of_layers_in_model = len(model_architecture["config"]["layers"])
+
+    for i in range(number_of_layers_in_model):
+
+        if model_architecture["config"]["layers"][i][
+            "class_name"] == 'Conv2D':  # Sprawdzenie czy dana warstwa jest konwolucyjna
+            count_conv_layer += 1
+
+            if start_from_conv_layer <= count_conv_layer:
+                print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
+                model = load_model(path_to_model)
+                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 2)  # i + 2 ponieważ trzeba uwzględnić
+                # jeszcze warstwę normalizującą i ReLU
+
+                for layer in cutted_model.layers:
+                    layer.trainable = False
+
+                cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model,
+                                                                         size_of_clasifier=size_of_clasificator)
+                cutted_model.summary()
+
+                scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
+                                                 batch_size=BATCH_SIZE, model_ID=count_conv_layer)
+
+                add_partial_score_to_file(score=scores, file_name=score_file_name,
+                                          number_of_trained_clasificator=count_conv_layer)
+                K.clear_session()
+
+    print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
+
+
+def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlowStorage, size_of_clasificator,
+                          start_from_conv_layer=1, BATCH_SIZE=256, clasificators_trained_at_one_time=16,
+                          filters_in_grup_after_division=2, resume_testing=False):
     """Metoda oceniająca skuteczność poszczegulnych warstw konwolucyjnych"""
 
     print('Testowanie warstw konwolucyjnych')
@@ -204,73 +279,89 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
     model_architecture = json.loads(model_architecture)
 
     if resume_testing is True:
-        start_from_conv_layer = check_on_with_layer_testing_was_stopped(score_file_name, model_architecture)
-        if not check_if_assesing_chosen_layer_was_complited(score_file_name, model_architecture, start_from_conv_layer, filters_in_grup_after_division):
-            remove_scores_of_last_conv_layer(score_file_name)
+        if os.path.exists(score_file_name):
+            start_from_conv_layer = check_on_with_layer_testing_was_stopped(score_file_name, model_architecture)
+            if not check_if_assesing_chosen_layer_was_complited(score_file_name, model_architecture,
+                                                                start_from_conv_layer, filters_in_grup_after_division):
+                remove_scores_of_last_conv_layer(score_file_name)
+            else:
+                start_from_conv_layer += 1
         else:
-            start_from_conv_layer += 1
+            raise ValueError("There is no file {}. Check if file name is correct. If optamalization wasn't run before"
+                             "or assesing of any whole conv layer wasn't compleated run function with"
+                             "resume_testing=False.".format(score_file_name))
 
-    del(model)
+    del (model)
 
-    count_conv_layer = 0      # Licznik warstw konwolucyjnych.
+    count_conv_layer = 0  # Licznik warstw konwolucyjnych.
     number_of_layers_in_model = len(model_architecture["config"]["layers"])
 
     for i in range(number_of_layers_in_model):
 
-        if model_architecture["config"]["layers"][i]["class_name"] == 'Conv2D':     # Sprawdzenie czy dana warstwa jest konwolucyjna
-            count_conv_layer += 1     # Zwiekszenie licznika
+        if model_architecture["config"]["layers"][i][
+            "class_name"] == 'Conv2D':  # Sprawdzenie czy dana warstwa jest konwolucyjna
+            count_conv_layer += 1  # Zwiekszenie licznika
 
             if start_from_conv_layer <= count_conv_layer:
                 print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
                 model = load_model(path_to_model)
-                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i+2)  # i + 2 ponieważ trzeba uwzględnić
-                                                                                # jeszcze warstwę normalizującą i ReLU
+                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 2)  # i + 2 ponieważ trzeba uwzględnić
+                # jeszcze warstwę normalizującą i ReLU
 
-                cutted_model = NNModifier.split_last_conv_block_on_groups(cutted_model, filters_in_grup_after_division=filters_in_grup_after_division)
+                cutted_model = NNModifier.split_last_conv_block_on_groups(cutted_model,
+                                                                          filters_in_grup_after_division=filters_in_grup_after_division)
                 cutted_model.summary()
 
                 del model  # usunięcie orginalnego modelu z pamięci karty(nie jestem pewny czy go usuwa)
 
                 number_of_filters = number_of_filters_in_conv_layer(model_architecture, count_conv_layer)
-                number_of_iteration_per_the_conv_layer = math.ceil(number_of_filters / clasificators_trained_at_one_time)
+                number_of_iteration_per_the_conv_layer = math.ceil(
+                    number_of_filters / clasificators_trained_at_one_time)
 
-                if number_of_iteration_per_the_conv_layer > 1:      # potrzebne jeżeli ilość trewowanych klasyfikatorów
-                    save_model(cutted_model, 'temp/model.hdf5')     # jest wieksza niż ilośc filtrów w warstwie
+                if number_of_iteration_per_the_conv_layer > 1:  # potrzebne jeżeli ilość trewowanych klasyfikatorów
+                    save_model(cutted_model, 'temp/model.hdf5')  # jest wieksza niż ilośc filtrów w warstwie
                     for j in range(number_of_iteration_per_the_conv_layer):
                         cutted_model = load_model('temp/model.hdf5')
-                        print('number of clasificator set', j+1, 'of', number_of_iteration_per_the_conv_layer)
+                        print('number of clasificator set', j + 1, 'of', number_of_iteration_per_the_conv_layer)
 
                         if j > 0:
                             start_index = 0
                             end_index = j * clasificators_trained_at_one_time
-                            cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index, end_index)
+                            cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index,
+                                                                                      end_index)
 
-                        if j+1 < number_of_iteration_per_the_conv_layer:
-                            start_index = (j+1) * clasificators_trained_at_one_time
+                        if j + 1 < number_of_iteration_per_the_conv_layer:
+                            start_index = (j + 1) * clasificators_trained_at_one_time
                             end_index = number_of_filters
-                            cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index, end_index)
+                            cutted_model = NNModifier.remove_choosen_last_conv_blocks(cutted_model, start_index,
+                                                                                      end_index)
 
                         for layer in cutted_model.layers:  # Zamrożenie wszystkich warstw w sieci
                             layer.trainable = False
 
-                        cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, size_of_clasifier=size_of_clasificator)
+                        cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model,
+                                                                                 size_of_clasifier=size_of_clasificator)
                         cutted_model.load_weights(path_to_model, by_name=True)
                         cutted_model.summary()
 
-                        scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training, batch_size=BATCH_SIZE, model_ID=count_conv_layer)
+                        scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
+                                                         batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
-                        add_partial_score_to_file(score=scores, file_name=score_file_name, number_of_trained_clasificator=count_conv_layer)
+                        add_partial_score_to_file(score=scores, file_name=score_file_name,
+                                                  number_of_trained_clasificator=count_conv_layer)
                         K.clear_session()
 
                 else:
                     for layer in cutted_model.layers:
                         layer.trainable = False
 
-                    cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model, size_of_clasifier=size_of_clasificator)
+                    cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model,
+                                                                             size_of_clasifier=size_of_clasificator)
                     cutted_model.load_weights(path_to_model, by_name=True)
                     cutted_model.summary()
 
-                    scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training, batch_size=BATCH_SIZE, model_ID=count_conv_layer)
+                    scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
+                                                     batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
                     add_partial_score_to_file(score=scores, file_name=score_file_name,
                                               number_of_trained_clasificator=count_conv_layer)
@@ -278,14 +369,14 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
 
-def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlowStorage, batch_size, model_ID):
 
+def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlowStorage, batch_size, model_ID):
     optimizer = SGD(lr=0.1, momentum=0.9, nesterov=True)
 
     number_of_model_outputs = len(cutted_model.outputs)
 
     number_of_classes = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
-                                                                               shuffle=True).num_classes
+                                                                              shuffle=True).num_classes
 
     if number_of_classes is 2:
         loss_function = 'binary_crossentropy'
@@ -293,13 +384,12 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
         loss_function = 'categorical_crossentropy'
 
     loss = [loss_function] * number_of_model_outputs
-    loss_weights = [1.0/number_of_model_outputs] * number_of_model_outputs
+    loss_weights = [1.0 / number_of_model_outputs] * number_of_model_outputs
 
     cutted_model.compile(optimizer,
                          loss=loss,
                          metrics=['accuracy'],
                          loss_weights=loss_weights)
-
 
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     dir_name = str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") +
@@ -315,20 +405,21 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
     # Callback
     learning_rate_regulation = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=7, verbose=1,
-                                                                 mode='auto', cooldown=3, min_lr=0.0005,
-                                                                 min_delta=0.001)
-    #tensorBoard = TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
+                                                 mode='auto', cooldown=3, min_lr=0.0005,
+                                                 min_delta=0.001)
+    # tensorBoard = TensorBoard(log_dir=relative_log_path)  # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
-        filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_loss:.2f}.hdf5", monitor='val_loss',
+        filepath=relative_path_to_save_model + "/weights-improvement-{epoch:02d}-{val_loss:.2f}.hdf5",
+        monitor='val_loss',
         save_best_only=True, period=6, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
     train_generator = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
-                                                              shuffle=True)
+                                                                            shuffle=True)
     train_generator = Data_Generator_for_Shallowing(train_generator, number_of_model_outputs)
 
     validation_generator = generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
-                                                                                   shuffle=False)
+                                                                                      shuffle=False)
 
     validation_generator = Data_Generator_for_Shallowing(validation_generator, number_of_model_outputs)
 
@@ -337,12 +428,12 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
                                verbose=1,
                                epochs=10000,  # ilość epok treningu
                                callbacks=[modelCheckPoint, earlyStopping, learning_rate_regulation],
-                                workers=4,
-                                validation_data=validation_generator,
-                                validation_steps=len(validation_generator),
-                                use_multiprocessing=False,
-                                shuffle=True,
-    )
+                               workers=4,
+                               validation_data=validation_generator,
+                               validation_steps=len(validation_generator),
+                               use_multiprocessing=False,
+                               shuffle=True,
+                               )
 
     K.clear_session()
 
@@ -361,7 +452,9 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     print(scores)
     return scores
 
-def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of_filters: str, path_to_assessing_data_full_layers: str):
+
+def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of_filters: str,
+                    path_to_assessing_data_full_layers: str):
     """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
 
     print('Wypłycanie sieci')
@@ -369,10 +462,9 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
     filters_accuracy_dict = FileManager.get_dictionary_from_json_text_file(path_to_assessing_data_group_of_filters)
     layers_accuracy_dict = FileManager.get_dictionary_from_json_text_file(path_to_assessing_data_full_layers)
 
-
     accuracy_of_whole_layers = []
     for i in range(len(layers_accuracy_dict)):
-        accuracy_of_whole_layers.append(layers_accuracy_dict[str(i+1)]['accuracy'])
+        accuracy_of_whole_layers.append(layers_accuracy_dict[str(i + 1)]['accuracy'])
 
     remove_all_filters_if_below = 0.015
     leave_all_filters_if_above = 0.1
@@ -385,26 +477,29 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
     for conv_layer_number in range(len(filters_accuracy_dict)):
         filters_to_remove = []
 
-        number_of_filters_in_layer = len(filters_accuracy_dict[str(conv_layer_number+1)]['accuracy'])
+        number_of_filters_in_layer = len(filters_accuracy_dict[str(conv_layer_number + 1)]['accuracy'])
 
         actual_accuracy = accuracy_of_whole_layers[conv_layer_number] - accuracy_of_previous_not_removed_layer
-        print('Accuracy increase in {} layer:{} %'.format(conv_layer_number + 1, actual_accuracy*100))
+        print('Accuracy increase in {} layer:{} %'.format(conv_layer_number + 1, actual_accuracy * 100))
         if actual_accuracy < remove_all_filters_if_below:
             print('layer {} will be fully removed\n'.format(conv_layer_number + 1))
 
-            conv_layers_to_remove.append(conv_layer_number+1)
+            conv_layers_to_remove.append(conv_layer_number + 1)
             removed_layer_counter += 1
 
         else:
             filters_accuracy_in_actual_layer = {}
 
             for number_of_grup_of_filters in range(number_of_filters_in_layer):  # corventing
-                item = {number_of_grup_of_filters: filters_accuracy_dict[str(conv_layer_number+1)]['accuracy'][number_of_grup_of_filters]}
+                item = {number_of_grup_of_filters: filters_accuracy_dict[str(conv_layer_number + 1)]['accuracy'][
+                    number_of_grup_of_filters]}
                 filters_accuracy_in_actual_layer.update(item)
 
             filters_accuracy_in_actual_layer = sort_filters_by_accuracy(filters_accuracy_in_actual_layer)
 
-            percent_of_filters_to_remove = calculate_percent_of_filters_to_remove(actual_accuracy*100, leave_all_filters_if_above*100, remove_all_filters_if_below*100)
+            percent_of_filters_to_remove = calculate_percent_of_filters_to_remove(actual_accuracy * 100,
+                                                                                  leave_all_filters_if_above * 100,
+                                                                                  remove_all_filters_if_below * 100)
             number_of_filters_to_remove = math.floor(number_of_filters_in_layer * percent_of_filters_to_remove)
 
             print('{} filters in layer {} will be removed\n'.format(number_of_filters_to_remove, conv_layer_number + 1))
@@ -420,7 +515,7 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
     print(filters_in_layers_to_remove)
 
     original_model = load_model(path_to_original_model)
-    shallowed_model = NNModifier.rename_choosen_conv_layers(original_model, [x+1 for x in conv_layers_to_remove])
+    shallowed_model = NNModifier.rename_choosen_conv_layers(original_model, [x + 1 for x in conv_layers_to_remove])
     shallowed_model = NNModifier.rename_first_dense_layer(shallowed_model)
     shallowed_model = NNModifier.remove_chosen_conv_layers(shallowed_model, conv_layers_to_remove)
     shallowed_model.load_weights(path_to_original_model, by_name=True)
@@ -478,22 +573,27 @@ def knowledge_distillation(path_to_shallowed_model,
     FileManager.create_folder(scierzka_logow)
 
     # Callback
-    learning_rate_regulation = ReduceLROnPlateau(monitor='val_categorical_crossentropy_metric', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
-    tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)               # Wizualizacja uczenia
-    modelCheckPoint = ModelCheckpoint(                              # Zapis sieci podczas uczenia
-        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5", monitor='val_categorical_crossentropy_metric',
+    learning_rate_regulation = ReduceLROnPlateau(monitor='val_categorical_crossentropy_metric', factor=0.1, patience=7,
+                                                 verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+    tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
+    modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
+        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5",
+        monitor='val_categorical_crossentropy_metric',
         save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric', patience=15)  # zatrzymanie uczenia sieci jeżeli
-                                                                                    # dokładność się nie zwiększa
+    earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric',
+                                  patience=15)  # zatrzymanie uczenia sieci jeżeli
+    # dokładność się nie zwiększa
 
     temperature = 6
 
-    training_gen = DataGenerator_for_knowledge_distillation(generator=generators_for_training.get_train_data_generator_flow(batch_size=64, shuffle=True),
-                                                            path_to_weights=path_to_original_model,
-                                                            shuffle=True)
-    validation_gen = DataGenerator_for_knowledge_distillation(generator=generators_for_training.get_validation_data_generator_flow(batch_size=8, shuffle=True),
-                                                              path_to_weights=path_to_original_model,
-                                                              shuffle=True)
+    training_gen = DataGenerator_for_knowledge_distillation(
+        generator=generators_for_training.get_train_data_generator_flow(batch_size=64, shuffle=True),
+        path_to_weights=path_to_original_model,
+        shuffle=True)
+    validation_gen = DataGenerator_for_knowledge_distillation(
+        generator=generators_for_training.get_validation_data_generator_flow(batch_size=8, shuffle=True),
+        path_to_weights=path_to_original_model,
+        shuffle=True)
 
     K.clear_session()
 
@@ -530,14 +630,13 @@ def knowledge_distillation(path_to_shallowed_model,
                                   max_queue_size=1
                                   )
 
-
     shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=[accuracy,
-                                     categorical_crossentropy_metric])
+                                                                                               categorical_crossentropy_metric])
 
-
-    test_generator = DataGenerator_for_knowledge_distillation(generator=generators_for_training.get_test_data_generator_flow(batch_size=128, shuffle=True),
-                                                              path_to_weights=path_to_original_model,
-                                                              shuffle=True)
+    test_generator = DataGenerator_for_knowledge_distillation(
+        generator=generators_for_training.get_test_data_generator_flow(batch_size=128, shuffle=True),
+        path_to_weights=path_to_original_model,
+        shuffle=True)
 
     scores = shallowed_model.evaluate_generator(test_generator)
 
@@ -551,7 +650,7 @@ if __name__ == '__main__':
 
     test = True
     optimalize_network_structure = False
-    
+
     if test is True:
         training_data = NNLoader.load_CIFAR10()
         training_data.get_training_outputs()
@@ -565,27 +664,23 @@ if __name__ == '__main__':
             cval=0.,  # value used for fill_mode = "constant"
             horizontal_flip=True,  # randomly flip images
             rescale=1. / 255,  # Przeskalowanie wejścia
-            )
-
+        )
 
         train_and_val_datagen = ImageDataGenerator(rescale=1. / 255,
                                                    samplewise_center=True,  # set each sample mean to 0
                                                    samplewise_std_normalization=True,  # divide each input by its std
                                                    )
 
+        generators_for_training = GeneratorsFlowStorage(datagen, train_and_val_datagen, train_and_val_datagen,
+                                                        GeneratorDataLoaderFromMemory(training_data))
 
-        generators_for_training = GeneratorsFlowStorage(datagen, train_and_val_datagen, train_and_val_datagen, GeneratorDataLoaderFromMemory(training_data))
-
-
-        assesing_conv_layers(path_to_model=path_to_original_model,
-                             generators_for_training=generators_for_training,
-                             size_of_clasificator=(10),
-                             clasificators_trained_at_one_time=32,
-                             filters_in_grup_after_division=1,
-                             start_from_conv_layer=1,
-                             resume_testing=False)
-
-
+        assesing_conv_filters(path_to_model=path_to_original_model,
+                              generators_for_training=generators_for_training,
+                              size_of_clasificator=(10),
+                              clasificators_trained_at_one_time=32,
+                              filters_in_grup_after_division=1,
+                              start_from_conv_layer=1,
+                              resume_testing=False)
 
     if optimalize_network_structure is True:
         model = load_model(path_to_original_model)
@@ -611,7 +706,6 @@ if __name__ == '__main__':
 
         training_data = NNLoader.load_CIFAR10()
 
-
         # arguments = {
         #     'class_mode': 'binary',
         #     'classes': ['ben', 'mal'],
@@ -621,8 +715,6 @@ if __name__ == '__main__':
         generators_for_training = GeneratorsFlowStorage(generator, generator, generator, training_data,
                                                         flow_from_directory=False)
 
-
         knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
                                path_to_original_model=path_to_original_model,
                                generators_for_training=generators_for_training)
-

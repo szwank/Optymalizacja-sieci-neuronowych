@@ -93,7 +93,7 @@ class NNModifier:
 
         model.save('temp/model.h5')
 
-        y = model.output
+        y = model.layers[-1].output
         y = Lambda(lambda x: K.stop_gradient(x))(y)
         y = Flatten(name='Added_flatten_layer')(y)
         for j in range(len(size_of_clasifier)):
@@ -103,7 +103,7 @@ class NNModifier:
             if j + 1 > len(size_of_clasifier) - 1:
                 y = Softmax(name='Added_Softmax_' + str(j))(y)
             else:
-                y = LeakyReLU(0.0000005, name='Added_LeakyReLU_' + str(j))(y)
+                y = LeakyReLU(0.2, name='Added_LeakyReLU_' + str(j))(y)
 
         model = Model(model.input, y)
         model.load_weights('temp/model.h5', by_name=True)

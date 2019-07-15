@@ -219,7 +219,7 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
     model = load_model(path_to_model)
     number_of_classes = model.output_shape[1]
     model_hash = NNHasher.hash_model(model)
-    score_file_name = model_hash + 'v2'
+    score_file_name = 'NetworkA/' + model_hash
 
     model.summary()
 
@@ -281,7 +281,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
     model = load_model(path_to_model)
     number_of_classes = model.output_shape[1]
     model_hash = NNHasher.hash_model(model)
-    score_file_name = model_hash + 'v2'
+    score_file_name = 'NetworkA/' + model_hash + 'v2'
 
     model.summary()
 
@@ -315,7 +315,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
             if start_from_conv_layer <= count_conv_layer:
                 print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
                 model = load_model(path_to_model)
-                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 2)  # i + 2 ponieważ trzeba uwzględnić
+                cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 3)  # i + 2 ponieważ trzeba uwzględnić
                 # jeszcze warstwę normalizującą i ReLU
 
                 cutted_model = NNModifier.split_last_conv_block_on_groups(cutted_model,

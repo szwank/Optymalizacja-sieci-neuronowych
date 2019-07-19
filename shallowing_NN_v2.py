@@ -87,7 +87,7 @@ def add_partial_score_to_file(score, file_name, number_of_trained_clasificator):
         file.write(json_string)
 
 
-def check_integrity_of_score_file(file_name: str, model: dict):
+def check_integrity_of_score_file(file_name: str, model_dict: dict):
     file = open_text_file(file_name, 'r', number_of_trials=10)
     json_string = file.read()
     file.close()
@@ -100,12 +100,12 @@ def check_integrity_of_score_file(file_name: str, model: dict):
         accuracy_len = len(dictionary[key]['accuracy'])
         loss_len = len(dictionary[key]['loss'])
 
-        layer_number = return_layer_number_of_chosen_conv_layer(model, int(key))
+        layer_number = return_layer_number_of_chosen_conv_layer(model_dict, int(key))
 
         if accuracy_len is not loss_len:
             broken_scores_in_conv_layers.append(int(key))
 
-        elif model["config"]["layers"][layer_number]['config']['filters'] is not accuracy_len:
+        elif model_dict["config"]["layers"][layer_number]['config']['filters'] is not accuracy_len:
             broken_scores_in_conv_layers.append(int(key))
 
     if broken_scores_in_conv_layers is []:
@@ -314,12 +314,16 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
 
             if start_from_conv_layer <= count_conv_layer:
                 print('Testowanie', count_conv_layer, 'warstw konwolucyjnych w sieci')
+
                 model = load_model(path_to_model)
+
                 cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 3)  # i + 2 ponieważ trzeba uwzględnić
+
                 # jeszcze warstwę normalizującą i ReLU
 
                 cutted_model = NNModifier.split_last_conv_block_on_groups(cutted_model,
                                                                           filters_in_grup_after_division=filters_in_grup_after_division)
+
                 cutted_model.summary()
 
                 number_of_filters = number_of_filters_in_conv_layer(model_architecture, count_conv_layer)
@@ -332,7 +336,10 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                 if number_of_iteration_per_the_conv_layer > 1:  # potrzebne jeżeli ilość trewowanych klasyfikatorów
                                                                 # jest wieksza niż ilośc filtrów w warstwie
                     for j in range(number_of_iteration_per_the_conv_layer):
+                        print('załadowanie przyciętego modelu')
+
                         cutted_model = load_model('temp/model.hdf5')
+
                         print('number of clasificator set', j + 1, 'of', number_of_iteration_per_the_conv_layer)
 
                         if j > 0:
@@ -352,6 +359,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
 
                         cutted_model = NNModifier.add_clssifiers_to_the_all_ends(cutted_model,
                                                                                  size_of_clasifier=size_of_clasificator)
+
                         cutted_model.load_weights(path_to_model, by_name=True)
                         cutted_model.summary()
 
@@ -450,7 +458,7 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     cutted_model.fit_generator(train_generator,
                                steps_per_epoch=len(train_generator),
                                verbose=1,
-                               epochs=10000,  # ilość epok treningu
+                               epochs=1,  # ilość epok treningu
                                callbacks=[modelCheckPoint, earlyStopping, learning_rate_regulation],
                                workers=4,
                                validation_data=validation_generator,
@@ -543,7 +551,8 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
     shallowed_model = NNModifier.rename_first_dense_layer(shallowed_model)
     shallowed_model = NNModifier.remove_chosen_conv_layers(shallowed_model, conv_layers_to_remove)
     shallowed_model.load_weights(path_to_original_model, by_name=True)
-    shallowed_model = NNModifier.remove_chosen_filters_from_model(shallowed_model, filters_in_layers_to_remove, 1)
+    shallowed_model = NNModifier.remove_chosen_filters_from_model(shallowed_model, filters_in_layers_to_remove,
+                                                                  filters_in_grup=1)
     return shallowed_model
 
 

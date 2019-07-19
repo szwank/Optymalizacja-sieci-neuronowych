@@ -205,8 +205,7 @@ class NNModifier:
         print('Deleting block associated with', conv_name)
         # Sprawdzanie czy trzy następne warstwy to usuwana warstwa konwolucyjna i jej batch normalization oraz ReLU.
         for i in range(3):
-            if (json_object["config"]["layers"][layer_number]["class_name"] == 'BatchNormalization' or
-                    json_object["config"]["layers"][layer_number]["class_name"] == 'ReLU' or
+            if (json_object["config"]["layers"][layer_number]["class_name"] in ['BatchNormalization', 'ReLU', 'LeakyReLU'] or
                     json_object["config"]["layers"][layer_number]["name"] == conv_name):
                 json_object = NNModifier.remove_chosen_layer_from_json_string(json_object, layer_number) # Usunięcie warstwy
             else:
@@ -622,3 +621,8 @@ class NNModifier:
                 if int(splited_layer_name[-1]) in interwal_of_layer_numbers:
                     del model_dictionary['config']['layers'][layer_number - removed_layers]
                     removed_layers += 1
+
+    @staticmethod
+    def convert_model_to_dictionary(model: Model):
+        json_string = model.to_json()
+        return json.loads(json_string)

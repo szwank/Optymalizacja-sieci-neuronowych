@@ -2,7 +2,7 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.layers import concatenate
 from keras.models import Model, load_model, save_model
 from keras.optimizers import SGD
-from keras.layers import Softmax
+from keras.layers import Softmax, Activation
 import keras.backend as K
 from keras.callbacks import ReduceLROnPlateau, TensorBoard, ModelCheckpoint, EarlyStopping
 import datetime
@@ -622,11 +622,11 @@ def knowledge_distillation(path_to_shallowed_model,
     K.clear_session()
 
     training_gen = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_train_data_generator_flow(batch_size=16, shuffle=True),
+        generator=generators_for_training.get_train_data_generator_flow(batch_size=128, shuffle=True),
         number_of_repetitions_of_input_data=2,
         repeat_correct_labels_x_times=3)
     validation_gen = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_validation_data_generator_flow(batch_size=16, shuffle=True),
+        generator=generators_for_training.get_validation_data_generator_flow(batch_size=32, shuffle=True),
         number_of_repetitions_of_input_data=2,
         repeat_correct_labels_x_times=3)
 
@@ -657,7 +657,11 @@ def knowledge_distillation(path_to_shallowed_model,
     shallowed_model.layers.pop()
 
     shallowed_logits = shallowed_model.layers[-1].output
-    probabilieties = Softmax()(shallowed_logits)
+
+    if original_model_output_shape == 1:
+        probabilieties = Activation('sigmoid')(shallowed_logits)
+    else:
+        probabilieties = Softmax()(shallowed_logits)
 
     outputs = concatenate([probabilieties, shallowed_logits, original_logits])
 
@@ -703,8 +707,8 @@ def knowledge_distillation(path_to_shallowed_model,
 if __name__ == '__main__':
     path_to_original_model = 'Zapis modelu/VGG16-CIFAR10-0.94acc.hdf5'
 
-    test = True
-    optimalize_network_structure = False
+    test = False
+    optimalize_network_structure = True
 
     if test is True:
         training_data = NNLoader.load_CIFAR10()
@@ -754,7 +758,18 @@ if __name__ == '__main__':
         save_model(shallowed_model, filepath=path_to_shallowed_model)
         K.clear_session()
 
-        generator = ImageDataGenerator(rescale=1. / 255,
+        training_generator = ImageDataGenerator(
+            samplewise_center=True,  # set each sample mean to 0
+            samplewise_std_normalization=True,  # divide each input by its std
+            width_shift_range=4,
+            height_shift_range=4,
+            fill_mode='nearest',
+            cval=0.,  # value used for fill_mode = "constant"
+            horizontal_flip=True,  # randomly flip images
+            rescale=1. / 255,  # Przeskalowanie wejścia
+        )
+
+        test_and_validation_generator = ImageDataGenerator(rescale=1. / 255,
                                        samplewise_center=True,  # set each sample mean to 0
                                        samplewise_std_normalization=True  # divide each input by its std
                                        )
@@ -766,9 +781,10 @@ if __name__ == '__main__':
         #     'classes': ['ben', 'mal'],
         #     'target_size': (224, 224)
         # }
+        data_loader = GeneratorDataLoaderFromMemory(training_data)
 
-        generators_for_training = GeneratorsFlowStorage(generator, generator, generator, training_data,
-                                                        flow_from_directory=False)
+        generators_for_training = GeneratorsFlowStorage(training_generator, test_and_validation_generator,
+                                                        test_and_validation_generator, data_loader)
 
         knowledge_distillation(path_to_shallowed_model=path_to_shallowed_model,
                                path_to_original_model=path_to_original_model,

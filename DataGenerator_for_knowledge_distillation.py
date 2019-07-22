@@ -18,8 +18,8 @@ class DataGenerator_for_knowledge_distillation(Sequence):
         x_unit, y_unit = self.generator[index]
 
         # x = np.tile(x_unit, self.number_of_repetitions_of_input_data)
-        y = np.tile(y_unit, (self.repeat_correct_labels_x_times, 1))
-        y = np.swapaxes(y, 0, 1)
+        y = np.tile(y_unit, (1, self.repeat_correct_labels_x_times))
+        # y = np.swapaxes(y, 0, 1)
 
         # y = []
         # for i in range(self.repeat_correct_labels_x_times):

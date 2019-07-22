@@ -14,7 +14,7 @@ from Create_NN_graph import Create_NN_graph
 from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
-from custom_loss_function import knowledge_distillation_loos
+from custom_loss_function import categorical_knowledge_distillation_loos
 from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
 from utils.FileMenager import FileManager
 
@@ -354,7 +354,7 @@ def knowledge_distillation(path_to_shallowed_model, dir_to_original_model):
     # shallowed_model.load_weights(dir_to_original_model, by_name=True)
     optimizer_SGD = SGD(lr=0.1, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
-                            loss=knowledge_distillation_loos(alpha_const=10, temperature=temperature),
+                            loss=categorical_knowledge_distillation_loos(alpha_const=10, temperature=temperature),
                             metrics=[accuracy,
                                      categorical_crossentropy_metric,
                                      soft_categorical_crossentrophy(temperature)])

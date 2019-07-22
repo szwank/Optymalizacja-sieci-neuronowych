@@ -262,13 +262,22 @@ class NNModifier:
 
 
     @staticmethod
-    def add_phrase_to_layer_name(json_object, layer_number, phrase):
-        old_layer_name = json_object["config"]["layers"][layer_number]["name"]
+    def add_phrase_to_layer_name(model: dict, layer_number, phrase):
+        old_layer_name = model["config"]["layers"][layer_number]["name"]
         new_name = "".join([old_layer_name, phrase])
-        json_object["config"]["layers"][layer_number]["name"] = new_name
-        json_object["config"]["layers"][layer_number]['config']["name"] = new_name
-        json_object["config"]["layers"][layer_number + 1]['inbound_nodes'][0][0][0] = new_name
-        return json_object
+
+        model["config"]["layers"][layer_number]["name"] = new_name
+        model["config"]["layers"][layer_number]['config']["name"] = new_name
+
+        if layer_number == 0:
+            model["config"]["input_layers"][0][0] = new_name
+
+        if layer_number + 1 < len(model["config"]["layers"]):  #
+            model["config"]["layers"][layer_number + 1]['inbound_nodes'][0][0][0] = new_name
+        else:
+            model["config"]["output_layers"][0][0] = new_name
+
+        return model
 
     @staticmethod
     def split_last_conv_block_on_groups(model, filters_in_grup_after_division, kernel_dimension=(3, 3), pading='same'):
@@ -626,3 +635,18 @@ class NNModifier:
     def convert_model_to_dictionary(model: Model):
         json_string = model.to_json()
         return json.loads(json_string)
+
+    @staticmethod
+    def convert_dictionary_model_to_model(model: dict):
+        return model_from_json(json.dumps(model))
+
+    @staticmethod
+    def add_phrase_to_all_layers_name(model: Model, phrase):
+        model.save('temp/model.h5')
+        model_dictionary = NNModifier.convert_model_to_dictionary(model)
+        for i in range(len(model_dictionary['config']['layers'])):
+            model_dictionary = NNModifier.add_phrase_to_layer_name(model_dictionary, i, phrase)
+
+        model = NNModifier.convert_dictionary_model_to_model(model_dictionary)
+        model.load_weights('temp/model.h5')
+        return model

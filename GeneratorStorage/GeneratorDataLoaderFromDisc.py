@@ -45,7 +45,7 @@ class GeneratorDataLoaderFromDisc(GeneratorDataLoader):
 
 
     def get_test_flow(self, data_generator, batch_size, shuffle):
-        retunr = data_generator.flow_from_directory(self.path_to_test_data,
+        return data_generator.flow_from_directory(self.path_to_test_data,
                                                                        class_mode=self.class_mode,
                                                                        classes=self.classes,
                                                                        target_size=self.target_size,

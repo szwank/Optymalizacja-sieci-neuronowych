@@ -12,9 +12,9 @@ from NNLoader import NNLoader
 from NNHasher import NNHasher
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
 import json
-from custom_loss_function import knowledge_distillation_loos
+from custom_loss_function import categorical_knowledge_distillation_loos, binary_knowledge_distillation_loos
 from utils.FileMenager import FileManager
-from custom_metrics import accuracy, soft_categorical_crossentrophy, categorical_crossentropy_metric
+from custom_metrics import categorical_accuracy_metric, soft_categorical_crossentrophy, categorical_crossentropy_metric, binary_accuracy_metric, binary_crossentropy_metric, soft_binary_crossentrophy
 import math
 import time
 from scipy import interpolate
@@ -592,7 +592,8 @@ def calculate_the_values_in_the_range(min: float, max: float, increase_value_per
 
 def knowledge_distillation(path_to_shallowed_model,
                            path_to_original_model,
-                           generators_for_training: GeneratorsFlowStorage):
+                           generators_for_training: GeneratorsFlowStorage,
+                           temperature=6):
     """Metoda dokonująca transferu danych"""
 
     print('Knowledge distillation')
@@ -617,59 +618,80 @@ def knowledge_distillation(path_to_shallowed_model,
                                   patience=15)  # zatrzymanie uczenia sieci jeżeli
     # dokładność się nie zwiększa
 
-    temperature = 6
-
-    training_gen = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_train_data_generator_flow(batch_size=64, shuffle=True),
-        path_to_weights=path_to_original_model,
-        shuffle=True)
-    validation_gen = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_validation_data_generator_flow(batch_size=8, shuffle=True),
-        path_to_weights=path_to_original_model,
-        shuffle=True)
 
     K.clear_session()
 
+    training_gen = DataGenerator_for_knowledge_distillation(
+        generator=generators_for_training.get_train_data_generator_flow(batch_size=16, shuffle=True),
+        number_of_repetitions_of_input_data=2,
+        repeat_correct_labels_x_times=3)
+    validation_gen = DataGenerator_for_knowledge_distillation(
+        generator=generators_for_training.get_validation_data_generator_flow(batch_size=16, shuffle=True),
+        number_of_repetitions_of_input_data=2,
+        repeat_correct_labels_x_times=3)
+
+    original_model = load_model(path_to_original_model)
+    original_model = NNModifier.add_phrase_to_all_layers_name(original_model, '_name_changed_to_connect')
+
+    original_model_output_shape = original_model.output_shape[1]
+
+    if original_model_output_shape == 1:
+        loss = binary_knowledge_distillation_loos(alpha_const=0.95, temperature=temperature, number_of_outputs_in_last_layer=original_model_output_shape)
+        metrics = [binary_accuracy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
+                   binary_crossentropy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
+                   soft_binary_crossentrophy(temperature, number_of_outputs_in_last_layer=original_model_output_shape)]
+    else:
+        loss = categorical_knowledge_distillation_loos(alpha_const=0.95, temperature=temperature,
+                                                       number_of_outputs_in_last_layer=original_model_output_shape)
+        metrics = [categorical_accuracy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
+                   categorical_crossentropy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
+                   soft_categorical_crossentrophy(temperature, number_of_outputs_in_last_layer=original_model_output_shape)]
+
+    original_model.layers.pop()
+    original_logits = original_model.layers[-1].output
+
+    for layer in original_model.layers:
+        layer.trainable = False
+
     shallowed_model = load_model(path_to_shallowed_model)
-    # shallowed_model = CreateNN.get_shallowed_model()
     shallowed_model.layers.pop()
 
-    logits = shallowed_model.layers[-1].output
-    probabilieties = Softmax()(logits)
+    shallowed_logits = shallowed_model.layers[-1].output
+    probabilieties = Softmax()(shallowed_logits)
 
-    # logits_T = Lambda(lambda x: x/temperature)(logits)
-    # probabilieties_T = Softmax()(logits_T)
+    outputs = concatenate([probabilieties, shallowed_logits, original_logits])
 
-    outputs = concatenate([probabilieties, logits])
-
-    shallowed_model = Model(inputs=shallowed_model.inputs, outputs=outputs)
+    shallowed_model = Model(inputs=[shallowed_model.inputs[0], original_model.inputs[0]], outputs=outputs)
 
     shallowed_model.summary()
 
+    shallowed_model = clear_session_in_addition_to_model(shallowed_model)
+
     optimizer_SGD = SGD(lr=0.1, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
-                            loss=knowledge_distillation_loos(alpha_const=0.95, temperature=temperature),
-                            metrics=[accuracy,
-                                     categorical_crossentropy_metric,
-                                     soft_categorical_crossentrophy(temperature)])
+                            loss=loss,
+                            metrics=metrics)
 
     shallowed_model.fit_generator(generator=training_gen,
                                   validation_data=validation_gen,
                                   use_multiprocessing=False,
-                                  workers=4,
+                                  workers=1,
                                   epochs=1000,
                                   callbacks=[tensorBoard, modelCheckPoint, learning_rate_regulation, earlyStopping],
                                   initial_epoch=0,
                                   max_queue_size=1
                                   )
 
-    shallowed_model.compile(optimizer=optimizer_SGD, loss='categorical_crossentropy', metrics=[accuracy,
-                                                                                               categorical_crossentropy_metric])
+    shallowed_model = Model(shallowed_model.inputs[0], shallowed_model.outputs[0])
 
-    test_generator = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_test_data_generator_flow(batch_size=128, shuffle=True),
-        path_to_weights=path_to_original_model,
-        shuffle=True)
+    if original_model_output_shape == 1:
+        loss = 'binary_crossentropy'
+    else:
+        loss = 'categorical_crossentropy'
+
+    shallowed_model.compile(optimizer=optimizer_SGD, loss=loss, metrics=['accuracy'])
+
+    test_generator = generators_for_training.get_test_data_generator_flow(batch_size=128, shuffle=True)
 
     scores = shallowed_model.evaluate_generator(test_generator)
 

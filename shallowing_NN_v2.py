@@ -606,27 +606,15 @@ def knowledge_distillation(path_to_shallowed_model,
     scierzka_logow = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
     FileManager.create_folder(scierzka_logow)
 
-    # Callback
-    learning_rate_regulation = ReduceLROnPlateau(monitor='val_categorical_crossentropy_metric', factor=0.1, patience=7,
-                                                 verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
-    tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
-    modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
-        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5",
-        monitor='val_categorical_crossentropy_metric',
-        save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric',
-                                  patience=15)  # zatrzymanie uczenia sieci jeżeli
-    # dokładność się nie zwiększa
-
 
     K.clear_session()
 
     training_gen = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_train_data_generator_flow(batch_size=128, shuffle=True),
+        generator=generators_for_training.get_train_data_generator_flow(batch_size=64, shuffle=True),
         number_of_repetitions_of_input_data=2,
         repeat_correct_labels_x_times=3)
     validation_gen = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_validation_data_generator_flow(batch_size=32, shuffle=True),
+        generator=generators_for_training.get_validation_data_generator_flow(batch_size=16, shuffle=True),
         number_of_repetitions_of_input_data=2,
         repeat_correct_labels_x_times=3)
 
@@ -640,12 +628,38 @@ def knowledge_distillation(path_to_shallowed_model,
         metrics = [binary_accuracy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    binary_crossentropy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    soft_binary_crossentrophy(temperature, number_of_outputs_in_last_layer=original_model_output_shape)]
+
+        # Callback
+        learning_rate_regulation = ReduceLROnPlateau(monitor='val_binary_crossentrophy_metric_', factor=0.1,
+                                                     patience=7,
+                                                     verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+        tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
+        modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
+            filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5",
+            monitor='val_binary_crossentrophy_metric_',
+            save_best_only=True, period=7, save_weights_only=False)
+        earlyStopping = EarlyStopping(monitor='val_binary_crossentrophy_metric_',
+                                      patience=15)  # zatrzymanie uczenia sieci jeżeli
+        # dokładność się nie zwiększa
     else:
         loss = categorical_knowledge_distillation_loos(alpha_const=0.95, temperature=temperature,
                                                        number_of_outputs_in_last_layer=original_model_output_shape)
         metrics = [categorical_accuracy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    categorical_crossentropy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    soft_categorical_crossentrophy(temperature, number_of_outputs_in_last_layer=original_model_output_shape)]
+
+        # Callback
+        learning_rate_regulation = ReduceLROnPlateau(monitor='val_categorical_crossentropy_metric', factor=0.1,
+                                                     patience=7,
+                                                     verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+        tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
+        modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
+            filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5",
+            monitor='val_categorical_crossentropy_metric',
+            save_best_only=True, period=7, save_weights_only=False)
+        earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric',
+                                      patience=15)  # zatrzymanie uczenia sieci jeżeli
+        # dokładność się nie zwiększa
 
     original_model.layers.pop()
     original_logits = original_model.layers[-1].output
@@ -671,7 +685,7 @@ def knowledge_distillation(path_to_shallowed_model,
 
     shallowed_model = clear_session_in_addition_to_model(shallowed_model)
 
-    optimizer_SGD = SGD(lr=0.1, momentum=0.9, nesterov=True)
+    optimizer_SGD = SGD(lr=0.01, momentum=0.9, nesterov=True)
     shallowed_model.compile(optimizer=optimizer_SGD,
                             loss=loss,
                             metrics=metrics)

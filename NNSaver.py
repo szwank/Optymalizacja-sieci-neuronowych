@@ -23,5 +23,6 @@ class NNSaver:
 
     @staticmethod
     def save_model(model: Model, path: str):
-        FileManager.create_folder(path)
+        splitted_string = path.split('/')
+        FileManager.create_folder(splitted_string[:-1])
         save_model(model, path)

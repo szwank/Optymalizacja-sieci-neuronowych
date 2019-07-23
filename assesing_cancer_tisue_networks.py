@@ -1,13 +1,16 @@
-from shallowing_NN_v2 import assesing_conv_filters, assesing_conv_layers, shallow_network, check_integrity_of_score_file, knowledge_distillation
+from shallowing_NN_v2 import assesing_conv_filters, assesing_conv_layers, shallow_network, \
+    check_integrity_of_score_file, knowledge_distillation
 from keras.preprocessing.image import ImageDataGenerator
 from keras.models import load_model, save_model
 import keras.backend as K
+from keras.optimizers import SGD
 from NNModifier import NNModifier
 from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
 from GeneratorStorage.GeneratorDataLoaderFromDisc import GeneratorDataLoaderFromDisc
 from NNHasher import NNHasher
 from NNSaver import NNSaver
 import os
+
 
 def get_generators_for_training():
     train_data_generator = ImageDataGenerator(
@@ -64,12 +67,9 @@ def get_generators_for_training():
     return generators_for_training
 
 
-
-
 train_whole_layers = False
 train_filters = False
 optimize_networks = True
-
 
 if train_whole_layers is True:
     for zbior in range(1, 5):
@@ -77,28 +77,20 @@ if train_whole_layers is True:
         network_name = os.listdir(path)[0]
         path_to_model = os.path.join(path, network_name)
 
-
-
         generators_for_training = get_generators_for_training()
 
-
         assesing_conv_layers(path_to_model,
-                              generators_for_training=generators_for_training,
-                              size_of_clasificator=(100, 100, 1),
-                              BATCH_SIZE=64,
-                              resume_testing=False,
+                             generators_for_training=generators_for_training,
+                             size_of_clasificator=(100, 100, 1),
+                             BATCH_SIZE=64,
+                             resume_testing=False,
                              start_from_conv_layer=1)
-
-
-
 
 if train_filters is True:
     for zbior in range(1, 5):
         path = os.path.join('NetworkA', 'fold' + str(zbior))
         network_name = os.listdir(path)[0]
         path_to_model = os.path.join(path, network_name)
-
-
 
         generators_for_training = get_generators_for_training()
 
@@ -129,10 +121,11 @@ if optimize_networks is True:
         if integrity_result:
             print("Score file for single filters is correct.")
         else:
-            raise(ValueError("File {} have a bug. Result in layers {} aren't correct".format(
+            raise (ValueError("File {} have a bug. Result in layers {} aren't correct".format(
                 path_to_assesing_file_single_filters, integrity_result)))
 
-        shallow_model = shallow_network(path_to_model, path_to_assesing_file_single_filters, path_to_assesing_file_full_layers)
+        shallow_model = shallow_network(path_to_model, path_to_assesing_file_single_filters,
+                                        path_to_assesing_file_full_layers)
 
         path_to_shallowed_model = 'temp/shallowed_model.hdf5'
 
@@ -144,5 +137,12 @@ if optimize_networks is True:
 
         shallowed_model = knowledge_distillation(path_to_shallowed_model, path_to_model, generators_for_training)
 
-        path_to_shallowed_model = os.path.join(path, 'shallowed_model')
+        optimizer_SGD = SGD(lr=0.01, momentum=0.9, nesterov=True)
+        shallowed_model.compile(optimizer=optimizer_SGD, loss='binary_crossentropy', metrics=['accuracy'])
+        test_generator = generators_for_training.get_test_data_generator_flow(batch_size=128, shuffle=True)
+        scores = shallowed_model.evaluate_generator(test_generator, steps=len(test_generator))
+
+        shallowed_model_name = "".join(
+            ['Shallowed_model_number_of_parameters_', shallowed_model.count_params(), '_test_accuracy_', scores[1], '.hdf5'])
+        path_to_shallowed_model = os.path.join(path, 'shallowed_model', shallowed_model_name)
         NNSaver.save_model(shallowed_model, path_to_shallowed_model)

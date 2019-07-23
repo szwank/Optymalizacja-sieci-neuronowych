@@ -486,7 +486,8 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
 
 def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of_filters: str,
-                    path_to_assessing_data_full_layers: str):
+                    path_to_assessing_data_full_layers: str, remove_all_filters_if_below: float = 0.015,
+                    leave_all_filters_if_above: float = 0.1):
     """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
 
     print('Wypłycanie sieci')
@@ -497,9 +498,6 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
     accuracy_of_whole_layers = []
     for i in range(len(layers_accuracy_dict)):
         accuracy_of_whole_layers.append(layers_accuracy_dict[str(i + 1)]['accuracy'])
-
-    remove_all_filters_if_below = 0.015
-    leave_all_filters_if_above = 0.1
 
     accuracy_of_previous_not_removed_layer = 0
     removed_layer_counter = 0
@@ -628,38 +626,27 @@ def knowledge_distillation(path_to_shallowed_model,
         metrics = [binary_accuracy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    binary_crossentropy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    soft_binary_crossentrophy(temperature, number_of_outputs_in_last_layer=original_model_output_shape)]
+        monitor = 'val_binary_crossentrophy_metric_'
 
-        # Callback
-        learning_rate_regulation = ReduceLROnPlateau(monitor='val_binary_crossentrophy_metric_', factor=0.1,
-                                                     patience=7,
-                                                     verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
-        tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
-        modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
-            filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5",
-            monitor='val_binary_crossentrophy_metric_',
-            save_best_only=True, period=7, save_weights_only=False)
-        earlyStopping = EarlyStopping(monitor='val_binary_crossentrophy_metric_',
-                                      patience=15)  # zatrzymanie uczenia sieci jeżeli
-        # dokładność się nie zwiększa
     else:
         loss = categorical_knowledge_distillation_loos(alpha_const=0.95, temperature=temperature,
                                                        number_of_outputs_in_last_layer=original_model_output_shape)
         metrics = [categorical_accuracy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    categorical_crossentropy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    soft_categorical_crossentrophy(temperature, number_of_outputs_in_last_layer=original_model_output_shape)]
+        monitor = 'val_categorical_crossentrophy_metric_'
 
-        # Callback
-        learning_rate_regulation = ReduceLROnPlateau(monitor='val_categorical_crossentropy_metric', factor=0.1,
+    # Callback
+    learning_rate_regulation = ReduceLROnPlateau(monitor=monitor, factor=0.1,
                                                      patience=7,
                                                      verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
-        tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
-        modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
-            filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{loss:.2f}.hdf5",
-            monitor='val_categorical_crossentropy_metric',
+    tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
+    modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
+            filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
+            monitor=monitor,
             save_best_only=True, period=7, save_weights_only=False)
-        earlyStopping = EarlyStopping(monitor='val_categorical_crossentropy_metric',
-                                      patience=15)  # zatrzymanie uczenia sieci jeżeli
-        # dokładność się nie zwiększa
+    earlyStopping = EarlyStopping(monitor=monitor,
+                                      patience=15)  # zatrzymanie uczenia sieci jeżeli dokładność się nie zwiększa
 
     original_model.layers.pop()
     original_logits = original_model.layers[-1].output
@@ -693,14 +680,20 @@ def knowledge_distillation(path_to_shallowed_model,
     shallowed_model.fit_generator(generator=training_gen,
                                   validation_data=validation_gen,
                                   use_multiprocessing=False,
-                                  workers=1,
-                                  epochs=1000,
+                                  workers=4,
+                                  epochs=20,
                                   callbacks=[tensorBoard, modelCheckPoint, learning_rate_regulation, earlyStopping],
                                   initial_epoch=0,
                                   max_queue_size=1
                                   )
 
-    shallowed_model = Model(shallowed_model.inputs[0], shallowed_model.outputs[0])
+    shallowed_model = NNLoader.load_best_model_from_dir(scierzka_zapisu, mode='highest')
+    save_model(shallowed_model, 'temp/model.hdf5')
+
+    K.clear_session()
+
+    shallowed_model = load_model(path_to_shallowed_model)
+    shallowed_model.load_weights('temp/model.hdf5', by_name=True)
 
     if original_model_output_shape == 1:
         loss = 'binary_crossentropy'
@@ -711,7 +704,7 @@ def knowledge_distillation(path_to_shallowed_model,
 
     test_generator = generators_for_training.get_test_data_generator_flow(batch_size=128, shuffle=True)
 
-    scores = shallowed_model.evaluate_generator(test_generator)
+    scores = shallowed_model.evaluate_generator(test_generator, steps=len(test_generator))
 
     print(scores)
     print('Test loss:', scores[2])

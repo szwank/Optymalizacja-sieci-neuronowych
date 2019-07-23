@@ -76,7 +76,7 @@ class NNLoader:
                         best_evaluation_parameter = evaluation_parameter
                         position_of_best = i
 
-        return load_model(os.path.join(directory, list_of_files_names[position_of_best]))
+        return load_model(os.path.join(directory, list_of_files_names[position_of_best]), compile=False)
 
     @staticmethod
     def load_best_weights_from_dir(model, directory):

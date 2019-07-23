@@ -1,7 +1,7 @@
 import keras.backend as K
 import tensorflow as tf
 from keras.losses import binary_crossentropy, mean_squared_error, mean_absolute_error
-import tensorflow as tf
+
 
 def categorical_crossentropy_loss(y_true, y_pred):
     return - K.sum(y_true * K.log(y_pred + K.epsilon()), keepdims=True, axis=-1)

@@ -681,19 +681,19 @@ def knowledge_distillation(path_to_shallowed_model,
                                   validation_data=validation_gen,
                                   use_multiprocessing=False,
                                   workers=4,
-                                  epochs=20,
+                                  epochs=10000,
                                   callbacks=[tensorBoard, modelCheckPoint, learning_rate_regulation, earlyStopping],
                                   initial_epoch=0,
-                                  max_queue_size=1
+                                  max_queue_size=10
                                   )
 
     shallowed_model = NNLoader.load_best_model_from_dir(scierzka_zapisu, mode='highest')
-    save_model(shallowed_model, 'temp/model.hdf5')
+    save_model(shallowed_model, 'temp/knowledge_distilation_model.hdf5')
 
     K.clear_session()
 
     shallowed_model = load_model(path_to_shallowed_model)
-    shallowed_model.load_weights('temp/model.hdf5', by_name=True)
+    shallowed_model.load_weights('temp/knowledge_distilation_model.hdf5', by_name=True)
 
     if original_model_output_shape == 1:
         loss = 'binary_crossentropy'
@@ -707,8 +707,9 @@ def knowledge_distillation(path_to_shallowed_model,
     scores = shallowed_model.evaluate_generator(test_generator, steps=len(test_generator))
 
     print(scores)
-    print('Test loss:', scores[2])
+    print('Test loss:', scores[0])
     print('Test accuracy:', scores[1])
+    return shallowed_model
 
 
 if __name__ == '__main__':
@@ -761,7 +762,7 @@ if __name__ == '__main__':
                                           path_to_assessing_data_group_of_filters=str(model_hash) + 'v2',
                                           path_to_assessing_data_full_layers=str(model_hash))
 
-        path_to_shallowed_model = 'temp/model.hdf5'
+        path_to_shallowed_model = 'temp/shallowed_model.hdf5'
         save_model(shallowed_model, filepath=path_to_shallowed_model)
         K.clear_session()
 

@@ -1,10 +1,12 @@
 import json
 import os
+from utils.FileMenager import FileManager
+from keras.models import Model, save_model
 
 class NNSaver:
 
     @staticmethod
-    def save_model(model, file_name):
+    def save_model_itself(model, file_name):
         json_str = model.to_json()
         with open(file_name, 'w') as outfile:
                 json.dump(json_str, outfile)
@@ -19,3 +21,7 @@ class NNSaver:
 
         model.save_weights(dir + '/' + file_name)
 
+    @staticmethod
+    def save_model(model: Model, path: str):
+        FileManager.create_folder(path)
+        save_model(model, path)

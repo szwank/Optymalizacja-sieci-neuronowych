@@ -1,12 +1,12 @@
 from shallowing_NN_v2 import assesing_conv_filters, assesing_conv_layers, shallow_network, check_integrity_of_score_file, knowledge_distillation
 from keras.preprocessing.image import ImageDataGenerator
 from keras.models import load_model, save_model
-from keras.optimizers import SGD
 import keras.backend as K
 from NNModifier import NNModifier
 from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
 from GeneratorStorage.GeneratorDataLoaderFromDisc import GeneratorDataLoaderFromDisc
 from NNHasher import NNHasher
+from NNSaver import NNSaver
 import os
 
 def get_generators_for_training():
@@ -142,4 +142,7 @@ if optimize_networks is True:
 
         generators_for_training = get_generators_for_training()
 
-        knowledge_distillation(path_to_shallowed_model, path_to_model, generators_for_training)
+        shallowed_model = knowledge_distillation(path_to_shallowed_model, path_to_model, generators_for_training)
+
+        path_to_shallowed_model = os.path.join(path, 'shallowed_model')
+        NNSaver.save_model(shallowed_model, path_to_shallowed_model)

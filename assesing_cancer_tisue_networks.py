@@ -66,15 +66,21 @@ def get_generators_for_training():
                                                     generator_data_loader=data_loader)
     return generators_for_training
 
+def get_list_of_files_in_directory(path):
+    files = []
+    for file in os.listdir(path):
+        if os.path.isfile(os.path.join(path, file)):
+            files.append(file)
+    return files
 
 train_whole_layers = False
-train_filters = False
+train_filters = True
 optimize_networks = True
 
 if train_whole_layers is True:
-    for zbior in range(1, 5):
+    for zbior in range(1, 6):
         path = os.path.join('NetworkA', 'fold' + str(zbior))
-        network_name = os.listdir(path)[0]
+        network_name = get_list_of_files_in_directory(path)[0]
         path_to_model = os.path.join(path, network_name)
 
         generators_for_training = get_generators_for_training()
@@ -87,9 +93,9 @@ if train_whole_layers is True:
                              start_from_conv_layer=1)
 
 if train_filters is True:
-    for zbior in range(1, 5):
+    for zbior in range(1, 6):
         path = os.path.join('NetworkA', 'fold' + str(zbior))
-        network_name = os.listdir(path)[0]
+        network_name = get_list_of_files_in_directory(path)[0]
         path_to_model = os.path.join(path, network_name)
 
         generators_for_training = get_generators_for_training()
@@ -102,10 +108,12 @@ if train_filters is True:
                               filters_in_grup_after_division=1,
                               resume_testing=False)
 
+
+
 if optimize_networks is True:
-    for zbior in range(1, 5):
+    for zbior in range(1, 6):
         path = os.path.join('NetworkA', 'fold' + str(zbior))
-        network_name = os.listdir(path)[0]
+        network_name = get_list_of_files_in_directory(path)[0]
         path_to_model = os.path.join(path, network_name)
 
         model = load_model(path_to_model)
@@ -143,6 +151,6 @@ if optimize_networks is True:
         scores = shallowed_model.evaluate_generator(test_generator, steps=len(test_generator))
 
         shallowed_model_name = "".join(
-            ['Shallowed_model_number_of_parameters_', shallowed_model.count_params(), '_test_accuracy_', scores[1], '.hdf5'])
+            ['Shallowed_model_number_of_parameters_', str(shallowed_model.count_params()), '_test_accuracy_', str(scores[1]), '.hdf5'])
         path_to_shallowed_model = os.path.join(path, 'shallowed_model', shallowed_model_name)
         NNSaver.save_model(shallowed_model, path_to_shallowed_model)

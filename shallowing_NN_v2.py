@@ -330,7 +330,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                 number_of_iteration_per_the_conv_layer = math.ceil(
                     number_of_filters / clasificators_trained_at_one_time)
 
-                save_model(cutted_model, 'temp/model.hdf5')
+                save_model(cutted_model, 'temp/cutted_model.hdf5')
                 K.clear_session()
 
                 if number_of_iteration_per_the_conv_layer > 1:  # potrzebne jeżeli ilość trewowanych klasyfikatorów
@@ -338,7 +338,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                     for j in range(number_of_iteration_per_the_conv_layer):
                         print('załadowanie przyciętego modelu')
 
-                        cutted_model = load_model('temp/model.hdf5')
+                        cutted_model = load_model('temp/cutted_model.hdf5')
 
                         print('number of clasificator set', j + 1, 'of', number_of_iteration_per_the_conv_layer)
 
@@ -373,7 +373,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                         K.clear_session()
 
                 else:
-                    cutted_model = load_model('temp/model.hdf5')
+                    cutted_model = load_model('temp/cutted_model.hdf5')
 
                     for layer in cutted_model.layers:
                         layer.trainable = False
@@ -458,7 +458,7 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     cutted_model.fit_generator(train_generator,
                                steps_per_epoch=len(train_generator),
                                verbose=1,
-                               epochs=1,  # ilość epok treningu
+                               epochs=10000,  # ilość epok treningu
                                callbacks=[modelCheckPoint, earlyStopping, learning_rate_regulation],
                                workers=4,
                                validation_data=validation_generator,
@@ -470,6 +470,11 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     K.clear_session()
 
     cutted_model = NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
+
+    cutted_model.compile(optimizer,
+                         loss=loss,
+                         metrics=['accuracy'],
+                         loss_weights=loss_weights)
 
     # test_generator = generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
     #                                                          shuffle=False)
@@ -608,11 +613,11 @@ def knowledge_distillation(path_to_shallowed_model,
     K.clear_session()
 
     training_gen = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_train_data_generator_flow(batch_size=64, shuffle=True),
+        generator=generators_for_training.get_train_data_generator_flow(batch_size=32, shuffle=True),
         number_of_repetitions_of_input_data=2,
         repeat_correct_labels_x_times=3)
     validation_gen = DataGenerator_for_knowledge_distillation(
-        generator=generators_for_training.get_validation_data_generator_flow(batch_size=16, shuffle=True),
+        generator=generators_for_training.get_validation_data_generator_flow(batch_size=32, shuffle=True),
         number_of_repetitions_of_input_data=2,
         repeat_correct_labels_x_times=3)
 

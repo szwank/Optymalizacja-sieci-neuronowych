@@ -11,7 +11,8 @@ import os
 remove_all_if_bellow = [0.0075, 0.0015, 0.03, 0.05, 0.075, 0.1, 0.3]
 increase_by = [0.015, 0.05, 0.075, 0.1, 0.15, 0.3, 0.5]
 
-path = os.path.join('NetworkA', 'fold' + str(1))
+zbior = 1
+path = os.path.join('NetworkA', 'fold' + str(zbior))
 network_name = get_list_of_files_in_directory(path)[0]
 path_to_model = os.path.join(path, network_name)
 
@@ -43,7 +44,7 @@ for remove_if_bellow in remove_all_if_bellow:
 
         K.clear_session()
 
-        generators_for_training = get_generators_for_training()
+        generators_for_training = get_generators_for_training(zbior)
 
         shallowed_model = knowledge_distillation(path_to_shallowed_model, path_to_model, generators_for_training)
 

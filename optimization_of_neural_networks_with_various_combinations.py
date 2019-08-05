@@ -1,0 +1,62 @@
+from keras.models import load_model, save_model
+from keras.optimizers import SGD
+from NNHasher import NNHasher
+from NNModifier import NNModifier
+from NNSaver import NNSaver
+from keras import backend as K
+from shallowing_NN_v2 import check_integrity_of_score_file, shallow_network, knowledge_distillation
+from assesing_cancer_tisue_networks import get_generators_for_training, get_list_of_files_in_directory
+import os
+
+remove_all_if_bellow = [0.0075, 0.0015, 0.03, 0.05, 0.075, 0.1, 0.3]
+increase_by = [0.015, 0.05, 0.075, 0.1, 0.15, 0.3, 0.5]
+leave_all_if_above = []
+for i in range(len(remove_all_if_bellow)):
+    leave_all_if_above.append(remove_all_if_bellow[] + increase_by[i])
+
+
+for i in range(30):
+    path = os.path.join('NetworkA', 'fold' + str(1))
+    network_name = get_list_of_files_in_directory(path)[0]
+    path_to_model = os.path.join(path, network_name)
+
+    model = load_model(path_to_model)
+    model_dict = NNModifier.convert_model_to_dictionary(model)
+    model_hash = NNHasher.hash_model(model)
+    K.clear_session()
+
+    path_to_assesing_file_full_layers = os.path.join('NetworkA', model_hash)
+    path_to_assesing_file_single_filters = os.path.join('NetworkA', model_hash + 'v2')
+
+    integrity_result = check_integrity_of_score_file(path_to_assesing_file_single_filters, model_dict)
+
+    if integrity_result:
+        print("Score file for single filters is correct.")
+    else:
+        raise (ValueError("File {} have a bug. Result in layers {} aren't correct".format(
+            path_to_assesing_file_single_filters, integrity_result)))
+
+    shallow_model = shallow_network(path_to_model, path_to_assesing_file_single_filters,
+                                    path_to_assesing_file_full_layers, remove_all_filters_if_below=,
+                                    leave_all_filters_if_above=0.1)
+
+    path_to_shallowed_model = 'temp/shallowed_model.hdf5'
+
+    save_model(shallow_model, path_to_shallowed_model)
+
+    K.clear_session()
+
+    generators_for_training = get_generators_for_training()
+
+    shallowed_model = knowledge_distillation(path_to_shallowed_model, path_to_model, generators_for_training)
+
+    optimizer_SGD = SGD(lr=0.01, momentum=0.9, nesterov=True)
+    shallowed_model.compile(optimizer=optimizer_SGD, loss='binary_crossentropy', metrics=['accuracy'])
+    test_generator = generators_for_training.get_test_data_generator_flow(batch_size=128, shuffle=True)
+    scores = shallowed_model.evaluate_generator(test_generator, steps=len(test_generator))
+
+    shallowed_model_name = "".join(
+        ['Shallowed_model_number_of_parameters_', str(shallowed_model.count_params()), '_test_accuracy_', str(scores[1]), '.hdf5'])
+    path_to_shallowed_model = os.path.join(path, 'shallowed_model', shallowed_model_name)
+    NNSaver.save_model(shallowed_model, path_to_shallowed_model)
+

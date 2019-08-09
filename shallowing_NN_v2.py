@@ -14,7 +14,8 @@ from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge
 import json
 from custom_loss_function import categorical_knowledge_distillation_loos, binary_knowledge_distillation_loos
 from utils.FileMenager import FileManager
-from custom_metrics import categorical_accuracy_metric, soft_categorical_crossentrophy, categorical_crossentropy_metric, binary_accuracy_metric, binary_crossentropy_metric, soft_binary_crossentrophy
+from custom_metrics import categorical_accuracy_metric, soft_categorical_crossentrophy, categorical_crossentropy_metric, \
+    binary_accuracy_metric, binary_crossentropy_metric, soft_binary_crossentrophy
 import math
 import time
 from scipy import interpolate
@@ -23,6 +24,7 @@ from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
 from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFromMemory
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 import gc
+import random
 
 
 def compare_weights_in_models(model1, model2):
@@ -252,7 +254,6 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
                 cutted_model = NNModifier.cut_model_to(model, cut_after_layer=i + 3)  # i + 2 ponieważ trzeba uwzględnić
                 # jeszcze warstwę normalizującą i ReLU
 
-
                 for layer in cutted_model.layers:
                     layer.trainable = False
 
@@ -266,7 +267,7 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
                                                  batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
                 add_score_to_file(score=scores, file_name=score_file_name,
-                                          conv_layer_number=count_conv_layer)
+                                  conv_layer_number=count_conv_layer)
                 K.clear_session()
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
@@ -334,7 +335,7 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
                 K.clear_session()
 
                 if number_of_iteration_per_the_conv_layer > 1:  # potrzebne jeżeli ilość trewowanych klasyfikatorów
-                                                                # jest wieksza niż ilośc filtrów w warstwie
+                    # jest wieksza niż ilośc filtrów w warstwie
                     for j in range(number_of_iteration_per_the_conv_layer):
                         print('załadowanie przyciętego modelu')
 
@@ -394,12 +395,12 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
 
     print('\nSzacowanie skuteczności poszczegulnych warstw sieci zakończone\n')
 
+
 def clear_session_in_addition_to_model(model):
     save_model(model, 'temp/model.hdf5')
     K.clear_session()
     gc.collect()
     return load_model('temp/model.hdf5')
-
 
 
 def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlowStorage, batch_size, model_ID):
@@ -490,9 +491,25 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     return scores
 
 
-def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of_filters: str,
-                    path_to_assessing_data_full_layers: str, remove_all_filters_if_below: float = 0.015,
-                    leave_all_filters_if_above: float = 0.1):
+def get_accuracy_of_group_of_filters_in_layer(filters_accuracy_dict: dict, conv_layer_number: int):
+    filters_accuracy_in_layer = {}
+    number_of_filters_in_actual_layer = len(filters_accuracy_dict[str(conv_layer_number)]['accuracy'])
+
+    for number_of_grup_of_filters in range(number_of_filters_in_actual_layer):  # corventing
+        item = {number_of_grup_of_filters: filters_accuracy_dict[str(conv_layer_number + 1)]['accuracy'][
+            number_of_grup_of_filters]}
+        filters_accuracy_in_layer.update(item)
+
+    return filters_accuracy_in_layer
+
+
+def shallow_network_based_on_filters(path_to_original_model: str, path_to_assessing_data_group_of_filters: str,
+                                     path_to_assessing_data_full_layers: str,
+                                     remove_all_filters_if_below: float = 0.015,
+                                     leave_all_filters_if_above: float = 0.1,
+                                     minimal_number_of_filters_in_layer_after_removing: int = 16,
+                                     number_of_filters_can_decrease=True
+                                     ):
     """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
 
     print('Wypłycanie sieci')
@@ -506,13 +523,95 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
 
     accuracy_of_previous_not_removed_layer = 0
     removed_layer_counter = 0
+    number_of_filters_in_previous_layer_after_removing = len(filters_accuracy_dict['1']['accuracy'])
     filters_in_layers_to_remove = {}
     conv_layers_to_remove = []
 
     for conv_layer_number in range(len(filters_accuracy_dict)):
         filters_to_remove = []
 
-        number_of_filters_in_layer = len(filters_accuracy_dict[str(conv_layer_number + 1)]['accuracy'])
+        number_of_filters_in_actual_layer = len(filters_accuracy_dict[str(conv_layer_number + 1)]['accuracy'])
+
+        actual_accuracy = accuracy_of_whole_layers[conv_layer_number] - accuracy_of_previous_not_removed_layer
+        print('Accuracy increase in {} layer:{} %'.format(conv_layer_number + 1, actual_accuracy * 100))
+
+        if actual_accuracy < remove_all_filters_if_below:
+            print('layer {} will be fully removed\n'.format(conv_layer_number + 1))
+
+            conv_layers_to_remove.append(conv_layer_number + 1)
+            removed_layer_counter += 1
+
+        else:
+
+            percent_of_filters_to_remove = calculate_percent_of_filters_to_remove(actual_accuracy * 100,
+                                                                                  leave_all_filters_if_above * 100,
+                                                                                  remove_all_filters_if_below * 100)
+            number_of_filters_to_remove = math.floor(number_of_filters_in_actual_layer * percent_of_filters_to_remove)
+
+            number_of_filters_left_after_removing = number_of_filters_in_actual_layer - number_of_filters_to_remove
+
+            if number_of_filters_left_after_removing < minimal_number_of_filters_in_layer_after_removing:  # layer is on edge of usability so it needs to be removed
+                print('layer {} will be fully removed\n'.format(conv_layer_number + 1))
+
+                conv_layers_to_remove.append(conv_layer_number + 1)
+                removed_layer_counter += 1
+                break
+
+            if number_of_filters_can_decrease is False and number_of_filters_left_after_removing < number_of_filters_in_previous_layer_after_removing:
+                number_of_filters_to_remove = number_of_filters_in_actual_layer - number_of_filters_in_previous_layer_after_removing
+
+            filters_accuracy_in_actual_layer = get_accuracy_of_group_of_filters_in_layer(filters_accuracy_dict,
+                                                                                         conv_layer_number + 1)
+
+            filters_accuracy_in_actual_layer = sort_filters_by_accuracy(filters_accuracy_in_actual_layer)
+
+            print('{} filters in layer {} will be removed\n'.format(number_of_filters_to_remove, conv_layer_number + 1))
+
+            for i in range(number_of_filters_to_remove):
+                filters_to_remove.append(filters_accuracy_in_actual_layer[i][0])
+            filters_to_remove.sort()
+
+            filters_in_layers_to_remove.update({(conv_layer_number + 1) - removed_layer_counter: filters_to_remove})
+
+            accuracy_of_previous_not_removed_layer = accuracy_of_whole_layers[conv_layer_number]
+            number_of_filters_in_previous_layer_after_removing = number_of_filters_in_actual_layer - len(
+                filters_in_layers_to_remove.keys())
+
+    print(filters_in_layers_to_remove)
+
+    original_model = load_model(path_to_original_model)
+    shallowed_model = NNModifier.rename_choosen_conv_layers(original_model, [x + 1 for x in conv_layers_to_remove])
+    shallowed_model = NNModifier.rename_first_dense_layer(shallowed_model)
+    shallowed_model = NNModifier.remove_chosen_conv_layers(shallowed_model, conv_layers_to_remove)
+    shallowed_model.load_weights(path_to_original_model, by_name=True)
+    shallowed_model = NNModifier.remove_chosen_filters_from_model(shallowed_model, filters_in_layers_to_remove,
+                                                                  filters_in_grup=1)
+    return shallowed_model
+
+
+def shallow_network_based_on_whole_layers_remove_random_filters(path_to_original_model: str,
+                                                                path_to_assessing_data_full_layers: str,
+                                                                remove_all_filters_if_below: float = 0.015,
+                                                                leave_all_filters_if_above: float = 0.1,
+                                                                minimal_number_of_filters_in_layer_after_removing=16):
+    """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
+
+    print('Wypłycanie sieci')
+
+    layers_accuracy_dict = FileManager.get_dictionary_from_json_text_file(path_to_assessing_data_full_layers)
+
+    accuracy_of_whole_layers = []
+    for i in range(len(layers_accuracy_dict)):
+        accuracy_of_whole_layers.append(layers_accuracy_dict[str(i + 1)]['accuracy'])
+
+    accuracy_of_previous_not_removed_layer = 0
+    removed_layer_counter = 0
+    filters_in_layers_to_remove = {}
+    conv_layers_to_remove = []
+
+    for conv_layer_number in range(len(layers_accuracy_dict)):
+
+        number_of_filters_in_actual_layer = len(layers_accuracy_dict[str(conv_layer_number + 1)]['accuracy'])
 
         actual_accuracy = accuracy_of_whole_layers[conv_layer_number] - accuracy_of_previous_not_removed_layer
         print('Accuracy increase in {} layer:{} %'.format(conv_layer_number + 1, actual_accuracy * 100))
@@ -523,25 +622,26 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
             removed_layer_counter += 1
 
         else:
-            filters_accuracy_in_actual_layer = {}
-
-            for number_of_grup_of_filters in range(number_of_filters_in_layer):  # corventing
-                item = {number_of_grup_of_filters: filters_accuracy_dict[str(conv_layer_number + 1)]['accuracy'][
-                    number_of_grup_of_filters]}
-                filters_accuracy_in_actual_layer.update(item)
-
-            filters_accuracy_in_actual_layer = sort_filters_by_accuracy(filters_accuracy_in_actual_layer)
 
             percent_of_filters_to_remove = calculate_percent_of_filters_to_remove(actual_accuracy * 100,
                                                                                   leave_all_filters_if_above * 100,
                                                                                   remove_all_filters_if_below * 100)
-            number_of_filters_to_remove = math.floor(number_of_filters_in_layer * percent_of_filters_to_remove)
+            number_of_filters_to_remove = math.floor(number_of_filters_in_actual_layer * percent_of_filters_to_remove)
+
+            number_of_filters_left_after_removing = number_of_filters_in_actual_layer - number_of_filters_to_remove
+
+            if number_of_filters_left_after_removing < minimal_number_of_filters_in_layer_after_removing:  # layer is on edge of usability so it needs to be removed
+                print('layer {} will be fully removed\n'.format(conv_layer_number + 1))
+
+                conv_layers_to_remove.append(conv_layer_number + 1)
+                removed_layer_counter += 1
+                break
 
             print('{} filters in layer {} will be removed\n'.format(number_of_filters_to_remove, conv_layer_number + 1))
 
-            for i in range(number_of_filters_to_remove):
-                filters_to_remove.append(filters_accuracy_in_actual_layer[i][0])
-                filters_to_remove.sort()
+            filters_to_remove = random.sample(range(number_of_filters_in_actual_layer),
+                                              number_of_filters_to_remove)  # choose unikue numbers of filters to remove
+            filters_to_remove.sort()
 
             filters_in_layers_to_remove.update({(conv_layer_number + 1) - removed_layer_counter: filters_to_remove})
 
@@ -556,6 +656,44 @@ def shallow_network(path_to_original_model: str, path_to_assessing_data_group_of
     shallowed_model.load_weights(path_to_original_model, by_name=True)
     shallowed_model = NNModifier.remove_chosen_filters_from_model(shallowed_model, filters_in_layers_to_remove,
                                                                   filters_in_grup=1)
+    return shallowed_model
+
+
+def shallow_network_based_on_whole_layers(path_to_original_model: str,
+                                          path_to_assessing_data_full_layers: str,
+                                          remove_layer_if_below: float = 0.015):
+    """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
+
+    print('Wypłycanie sieci')
+
+    layers_accuracy_dict = FileManager.get_dictionary_from_json_text_file(path_to_assessing_data_full_layers)
+
+    accuracy_of_whole_layers = []
+    for i in range(len(layers_accuracy_dict)):
+        accuracy_of_whole_layers.append(layers_accuracy_dict[str(i + 1)]['accuracy'])
+
+    accuracy_of_previous_not_removed_layer = 0
+    removed_layer_counter = 0
+    conv_layers_to_remove = []
+
+    for conv_layer_number in range(len(layers_accuracy_dict)):
+
+        actual_accuracy = accuracy_of_whole_layers[conv_layer_number] - accuracy_of_previous_not_removed_layer
+        print('Accuracy increase in {} layer:{} %'.format(conv_layer_number + 1, actual_accuracy * 100))
+        if actual_accuracy < remove_layer_if_below:
+            print('layer {} will be fully removed\n'.format(conv_layer_number + 1))
+
+            conv_layers_to_remove.append(conv_layer_number + 1)
+            removed_layer_counter += 1
+
+        else:
+            accuracy_of_previous_not_removed_layer = accuracy_of_whole_layers[conv_layer_number]
+
+    original_model = load_model(path_to_original_model)
+    shallowed_model = NNModifier.rename_choosen_conv_layers(original_model, [x + 1 for x in conv_layers_to_remove])
+    shallowed_model = NNModifier.rename_first_dense_layer(shallowed_model)
+    shallowed_model = NNModifier.remove_chosen_conv_layers(shallowed_model, conv_layers_to_remove)
+    shallowed_model.load_weights(path_to_original_model, by_name=True)
     return shallowed_model
 
 
@@ -609,7 +747,6 @@ def knowledge_distillation(path_to_shallowed_model,
     scierzka_logow = 'log/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
     FileManager.create_folder(scierzka_logow)
 
-
     K.clear_session()
 
     training_gen = DataGenerator_for_knowledge_distillation(
@@ -627,7 +764,8 @@ def knowledge_distillation(path_to_shallowed_model,
     original_model_output_shape = original_model.output_shape[1]
 
     if original_model_output_shape == 1:
-        loss = binary_knowledge_distillation_loos(alpha_const=0.95, temperature=temperature, number_of_outputs_in_last_layer=original_model_output_shape)
+        loss = binary_knowledge_distillation_loos(alpha_const=0.95, temperature=temperature,
+                                                  number_of_outputs_in_last_layer=original_model_output_shape)
         metrics = [binary_accuracy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    binary_crossentropy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    soft_binary_crossentrophy(temperature, number_of_outputs_in_last_layer=original_model_output_shape)]
@@ -638,20 +776,21 @@ def knowledge_distillation(path_to_shallowed_model,
                                                        number_of_outputs_in_last_layer=original_model_output_shape)
         metrics = [categorical_accuracy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
                    categorical_crossentropy_metric(number_of_outputs_in_last_layer=original_model_output_shape),
-                   soft_categorical_crossentrophy(temperature, number_of_outputs_in_last_layer=original_model_output_shape)]
+                   soft_categorical_crossentrophy(temperature,
+                                                  number_of_outputs_in_last_layer=original_model_output_shape)]
         monitor = 'val_categorical_crossentrophy_metric_'
 
     # Callback
     learning_rate_regulation = ReduceLROnPlateau(monitor=monitor, factor=0.1,
-                                                     patience=7,
-                                                     verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+                                                 patience=7,
+                                                 verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
-            filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
-            monitor=monitor,
-            save_best_only=True, period=7, save_weights_only=False)
+        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
+        monitor=monitor,
+        save_best_only=True, period=7, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor=monitor,
-                                      patience=15)  # zatrzymanie uczenia sieci jeżeli dokładność się nie zwiększa
+                                  patience=15)  # zatrzymanie uczenia sieci jeżeli dokładność się nie zwiększa
 
     original_model.layers.pop()
     original_logits = original_model.layers[-1].output
@@ -763,9 +902,12 @@ if __name__ == '__main__':
 
         check_integrity_of_score_file(str(model_hash) + 'v2', model_architecture)
 
-        shallowed_model = shallow_network(path_to_original_model=path_to_original_model,
-                                          path_to_assessing_data_group_of_filters=str(model_hash) + 'v2',
-                                          path_to_assessing_data_full_layers=str(model_hash))
+        shallowed_model = shallow_network_based_on_filters(path_to_original_model=path_to_original_model,
+                                                           path_to_assessing_data_group_of_filters=str(
+                                                               model_hash) + 'v2',
+                                                           path_to_assessing_data_full_layers=str(model_hash),
+                                                           leave_all_filters_if_above=0.9,
+                                                           number_of_filters_can_decrease=True)
 
         path_to_shallowed_model = 'temp/shallowed_model.hdf5'
         save_model(shallowed_model, filepath=path_to_shallowed_model)
@@ -783,9 +925,10 @@ if __name__ == '__main__':
         )
 
         test_and_validation_generator = ImageDataGenerator(rescale=1. / 255,
-                                       samplewise_center=True,  # set each sample mean to 0
-                                       samplewise_std_normalization=True  # divide each input by its std
-                                       )
+                                                           samplewise_center=True,  # set each sample mean to 0
+                                                           samplewise_std_normalization=True
+                                                           # divide each input by its std
+                                                           )
 
         training_data = NNLoader.load_CIFAR10()
 

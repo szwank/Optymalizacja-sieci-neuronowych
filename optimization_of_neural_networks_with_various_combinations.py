@@ -9,6 +9,7 @@ from shallowing_NN_v2 import check_integrity_of_score_file, shallow_network_base
 from assesing_cancer_tisue_networks import get_generators_for_training, get_list_of_files_in_directory
 from utils.FileMenager import FileManager
 import os
+import time
 
 
 def test_model(model, generator):

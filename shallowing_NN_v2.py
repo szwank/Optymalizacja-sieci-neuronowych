@@ -782,15 +782,15 @@ def knowledge_distillation(path_to_shallowed_model,
 
     # Callback
     learning_rate_regulation = ReduceLROnPlateau(monitor=monitor, factor=0.1,
-                                                 patience=7,
-                                                 verbose=1, mode='auto', cooldown=5, min_lr=0.0005, min_delta=0.002)
+                                                     patience=5,
+                                                     verbose=1, mode='auto', cooldown=3, min_lr=0.0005, min_delta=0.002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
-        filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
-        monitor=monitor,
-        save_best_only=True, period=7, save_weights_only=False)
+            filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
+            monitor=monitor,
+            save_best_only=True, period=5, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor=monitor,
-                                  patience=15)  # zatrzymanie uczenia sieci jeżeli dokładność się nie zwiększa
+                                      patience=7)  # zatrzymanie uczenia sieci jeżeli dokładność się nie zwiększa
 
     original_model.layers.pop()
     original_logits = original_model.layers[-1].output

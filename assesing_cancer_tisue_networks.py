@@ -1,4 +1,4 @@
-from shallowing_NN_v2 import assesing_conv_filters, assesing_conv_layers, shallow_network, \
+from shallowing_NN_v2 import assesing_conv_filters, assesing_conv_layers, shallow_network_based_on_filters, \
     check_integrity_of_score_file, knowledge_distillation
 from keras.preprocessing.image import ImageDataGenerator
 from keras.models import load_model, save_model
@@ -134,8 +134,8 @@ def main():
                 raise (ValueError("File {} have a bug. Result in layers {} aren't correct".format(
                     path_to_assesing_file_single_filters, integrity_result)))
 
-            shallow_model = shallow_network(path_to_model, path_to_assesing_file_single_filters,
-                                            path_to_assesing_file_full_layers)
+            shallow_model = shallow_network_based_on_filters(path_to_model, path_to_assesing_file_single_filters,
+                                                             path_to_assesing_file_full_layers)
 
             path_to_shallowed_model = 'temp/shallowed_model.hdf5'
 

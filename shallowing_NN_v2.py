@@ -782,7 +782,7 @@ def knowledge_distillation(path_to_shallowed_model,
 
     # Callback
     learning_rate_regulation = ReduceLROnPlateau(monitor=monitor, factor=0.1,
-                                                     patience=5,
+                                                     patience=3,
                                                      verbose=1, mode='auto', cooldown=3, min_lr=0.0005, min_delta=0.002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
@@ -823,12 +823,12 @@ def knowledge_distillation(path_to_shallowed_model,
 
     shallowed_model.fit_generator(generator=training_gen,
                                   validation_data=validation_gen,
-                                  use_multiprocessing=False,
+                                  use_multiprocessing=True,
                                   workers=4,
                                   epochs=10000,
                                   callbacks=[tensorBoard, modelCheckPoint, learning_rate_regulation, earlyStopping],
                                   initial_epoch=0,
-                                  max_queue_size=10
+                                  max_queue_size=32
                                   )
 
     shallowed_model = NNLoader.load_best_model_from_dir(scierzka_zapisu, mode='highest')

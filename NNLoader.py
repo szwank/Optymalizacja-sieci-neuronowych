@@ -7,10 +7,22 @@ from DataStorage import DataStorage
 from TrainingData import TrainingData
 import os
 import re
-
+import time
 
 
 class NNLoader:
+    def try_load_model(path_to_model: str, compile: bool = True, number_of_trials: int = 10):
+        try:
+            return load_model(path_to_model)
+        except:
+            if number_of_trials > 0:
+                time.sleep(0.5)
+                number_of_trials -= 1
+                return NNLoader.try_load_model(path_to_model, compile, number_of_trials)
+            else:
+                raise ValueError("Cannot open model in path {}. The number of attempts to load model has been exceeded."
+                                 " Check if path is correct.".format(path_to_model))
+
 
     @staticmethod
     def load(file_name):
@@ -76,7 +88,7 @@ class NNLoader:
                         best_evaluation_parameter = evaluation_parameter
                         position_of_best = i
 
-        return load_model(os.path.join(directory, list_of_files_names[position_of_best]), compile=False)
+        return NNLoader.try_load_model(os.path.join(directory, list_of_files_names[position_of_best]), compile=False)
 
     @staticmethod
     def load_best_weights_from_dir(model, directory):

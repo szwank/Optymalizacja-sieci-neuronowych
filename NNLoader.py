@@ -13,7 +13,7 @@ import time
 class NNLoader:
     def try_load_model(path_to_model: str, compile: bool = True, number_of_trials: int = 10):
         try:
-            return load_model(path_to_model)
+            return load_model(path_to_model, compile=compile)
         except:
             if number_of_trials > 0:
                 time.sleep(0.5)

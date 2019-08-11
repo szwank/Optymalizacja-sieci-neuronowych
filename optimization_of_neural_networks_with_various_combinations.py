@@ -30,7 +30,7 @@ def main():
     optymalization_with_removing_random_filters = True
     optymalization_from_paper = True
 
-    number_of_repeatrs = 6
+    number_of_repeatrs = 1
 
     for zbior in range(1, 2):
         path = os.path.join('NetworkA', 'fold' + str(zbior))
@@ -89,6 +89,8 @@ def main():
                                                                shallowed_model_name)
                         NNSaver.save_model(shallowed_model, path_to_shallowed_model)
 
+                        K.clear_session()
+
         if optymalization_with_removing_random_filters is True:
             for remove_if_bellow in remove_all_if_bellow:
                 for increase_by_ in increase_by:
@@ -124,6 +126,8 @@ def main():
                                                                shallowed_model_name)
                         NNSaver.save_model(shallowed_model, path_to_shallowed_model)
 
+                        K.clear_session()
+
         if optymalization_from_paper is True:
             for remove_if_bellow in remove_all_if_bellow:
                 for i in range(number_of_repeatrs):
@@ -155,6 +159,8 @@ def main():
                                                            directory_name,
                                                            shallowed_model_name)
                     NNSaver.save_model(shallowed_model, path_to_shallowed_model)
+
+                    K.clear_session()
 
 
 if __name__ == '__main__':

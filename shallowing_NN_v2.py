@@ -147,12 +147,15 @@ def count_layer_by_name(model, key_world_in_name):
     return counted_layers
 
 
-def return_layer_number_of_chosen_conv_layer(model: dict, with_conv_layer: int):
+def return_layer_number_of_chosen_conv_layer(model: dict, whitch_conv_layer: int):
+    if whitch_conv_layer <= 0:
+        raise ValueError("Number of conv layer have to be positive (above 0).")
+
     conv_layer_counter = 0
     for layer_number, layer in enumerate(model["config"]["layers"]):
         if 'conv' in layer['name']:
             conv_layer_counter += 1
-            if with_conv_layer == conv_layer_counter:
+            if whitch_conv_layer == conv_layer_counter:
                 return layer_number
 
 
@@ -608,10 +611,14 @@ def shallow_network_based_on_whole_layers_remove_random_filters(path_to_original
     removed_layer_counter = 0
     filters_in_layers_to_remove = {}
     conv_layers_to_remove = []
+    model = load_model(path_to_original_model, compile=False)
+    model_dict = NNModifier.convert_model_to_dictionary(model)
+
+    K.clear_session()
 
     for conv_layer_number in range(len(layers_accuracy_dict)):
 
-        number_of_filters_in_actual_layer = len(layers_accuracy_dict[str(conv_layer_number + 1)]['accuracy'])
+        number_of_filters_in_actual_layer = number_of_filters_in_conv_layer(model_dict, conv_layer_number+1)
 
         actual_accuracy = accuracy_of_whole_layers[conv_layer_number] - accuracy_of_previous_not_removed_layer
         print('Accuracy increase in {} layer:{} %'.format(conv_layer_number + 1, actual_accuracy * 100))
@@ -788,7 +795,7 @@ def knowledge_distillation(path_to_shallowed_model,
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
             filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
             monitor=monitor,
-            save_best_only=True, period=5, save_weights_only=False)
+            save_best_only=True, period=1, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor=monitor,
                                       patience=7)  # zatrzymanie uczenia sieci jeżeli dokładność się nie zwiększa
 
@@ -830,6 +837,8 @@ def knowledge_distillation(path_to_shallowed_model,
                                   initial_epoch=0,
                                   max_queue_size=32
                                   )
+
+    K.clear_session()
 
     shallowed_model = NNLoader.load_best_model_from_dir(scierzka_zapisu, mode='highest')
     save_model(shallowed_model, 'temp/knowledge_distilation_model.hdf5')

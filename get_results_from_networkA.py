@@ -39,15 +39,18 @@ def safe_list_gate(list, index):
 def main():
     results = {}
 
-    for fold in range(5, 6):        # fold
-        path = os.path.join('NetworkA', 'fold' + str(fold))
+    for fold in range(1):        # fold
+        path = os.path.join('Zapis modelu')
         folders_in_directory = get_folders_in_directory(path)
 
-        type_of_optymalization_results = {}
+        type_of_optymalization = {}
 
-        for folder in folders_in_directory:     # filrst firectory(type of optymalization)
+        for folder in folders_in_directory:     # filrst directory(type of optymalization)
+            if folder not in ['shallowed_model_removing_filters', 'shallowed_model_removing_random_filters', 'shallowed_model_removing_whole_layers']:
+                continue
+
             folders_in_folder = get_folders_in_directory(os.path.join(path, folder))
-            type_of_optymalization = {}
+            type_of_optymalization_results = {}
 
             for folder_with_files in folders_in_folder:     # second folder parameters of optymalization
 
@@ -67,7 +70,7 @@ def main():
             type_of_optymalization[folder] = type_of_optymalization_results
         results[fold] = type_of_optymalization
 
-    file = open('optymalization_results.txt', 'a+')
+    file = open('optymalization_results-cifar10.txt', 'a+')
     results = json.dumps(results)
     file.write(results)
     file.close()

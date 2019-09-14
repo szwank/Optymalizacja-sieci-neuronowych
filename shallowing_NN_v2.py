@@ -411,10 +411,10 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
     number_of_model_outputs = len(cutted_model.outputs)
 
-    number_of_classes = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
-                                                                              shuffle=True).num_classes
+    # number_of_classes = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
+    #                                                                           shuffle=True).num_classes
 
-    if number_of_classes is 2:
+    if number_of_model_outputs is 2:
         loss_function = 'binary_crossentropy'
     else:
         loss_function = 'categorical_crossentropy'

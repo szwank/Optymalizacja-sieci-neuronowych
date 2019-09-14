@@ -6,12 +6,10 @@ from NNSaver import NNSaver
 from keras import backend as K
 from shallowing_NN_v2 import check_integrity_of_score_file, shallow_network_based_on_filters, knowledge_distillation, \
     shallow_network_based_on_whole_layers_remove_random_filters, shallow_network_based_on_whole_layers
-from assesing_cancer_tisue_networks import get_generators_for_training, get_list_of_files_in_directory
-from utils.FileMenager import FileManager
+from assesing_cancer_tisue_networks import get_list_of_files_in_directory
+
 import os
 import time
-
-
 
 def test_model(model, generator):
     optimizer_SGD = SGD(lr=0.01, momentum=0.9, nesterov=True)

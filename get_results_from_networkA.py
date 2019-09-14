@@ -35,19 +35,21 @@ def safe_list_gate(list, index):
         return None
 
 
+
 def main():
     results = {}
 
-    for fold in range(1, 6):        # fold
+    for fold in range(5, 6):        # fold
         path = os.path.join('NetworkA', 'fold' + str(fold))
         folders_in_directory = get_folders_in_directory(path)
 
-        fold_results = {}
+        type_of_optymalization_results = {}
 
         for folder in folders_in_directory:     # filrst firectory(type of optymalization)
             folders_in_folder = get_folders_in_directory(os.path.join(path, folder))
+            type_of_optymalization = {}
 
-            for folder_with_files in folders_in_folder:     # second folder farameters of optymalization
+            for folder_with_files in folders_in_folder:     # second folder parameters of optymalization
 
                 numbers_in_folder_name = get_numbers_from_string(folder_with_files, splited_by="_")
                 result = {}
@@ -61,8 +63,9 @@ def main():
                     accuracy = i / (i+1) * accuracy + get_numbers_from_string(file[:-5], "_")[0] / (i+1)
                     result['test_accuracy'] = accuracy
 
-                fold_results["".join([str(remove_if_below), '/', str(leave_if_above)])] = result
-        results[fold] = fold_results
+                type_of_optymalization_results["".join([str(remove_if_below), '/', str(leave_if_above)])] = result
+            type_of_optymalization[folder] = type_of_optymalization_results
+        results[fold] = type_of_optymalization
 
     file = open('optymalization_results.txt', 'a+')
     results = json.dumps(results)

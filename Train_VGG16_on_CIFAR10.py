@@ -45,9 +45,8 @@ def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
     
     
     # Wczytanie bazy zdjęć
-    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
-    TRAIN_SIZE = len(x_train)
-    VALIDATION_SIZE = len(x_validation)
+    train_data = NNLoader.load_CIFAR10()
+
     
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     save_model_relative_path = 'Zapis modelu/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
@@ -62,13 +61,13 @@ def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
         os.makedirs(save_log_absolute_path)
 
     # Callback
-    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=7, verbose=1, mode='auto', cooldown=5, min_lr=0.0005)
+    learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=3, verbose=1, mode='auto', cooldown=7, min_lr=0.0005)
     csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=save_log_relative_path)               # Wizualizacja uczenia
     modelCheckPoint = keras.callbacks.ModelCheckpoint(                              # Zapis sieci podczas uczenia
         filepath=save_model_relative_path + "/weights-improvement-{epoch:02d}-{val_acc:.2f}.hdf5", monitor='val_loss',
-        save_best_only=True, period=7, save_weights_only=False)
-    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
+        save_best_only=True, period=1, save_weights_only=False)
+    earlyStopping = keras.callbacks.EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)  # zatrzymanie uczenia sieci jeżeli
                                                                                                                # dokładność się nie zwiększa
     
     print('Using real-time data augmentation.')
@@ -113,14 +112,14 @@ def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
     
     # keras.backend.get_session().run(tf.global_variables_initializer())
     original_network.fit_generator(
-            datagen.flow(x_train, y_train, batch_size=BATCH_SIZE),  # Podawanie danych uczących
+            datagen.flow(train_data.get_training_inputs(), train_data.get_training_outputs(), batch_size=BATCH_SIZE),  # Podawanie danych uczących
             verbose=1,
-            steps_per_epoch=TRAIN_SIZE // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
+            steps_per_epoch=len(train_data.get_training_inputs()) // BATCH_SIZE,  # Ilość batchy zanim upłynie epoka
             epochs=1000,                         # ilość epok treningu
             callbacks=[csv_logger, tensorBoard, modelCheckPoint, earlyStopping, learning_rate_regulation],
-            validation_steps=VALIDATION_SIZE // BATCH_SIZE,
+            validation_steps=len(train_data.get_validation_outputs()) // BATCH_SIZE,
             workers=10,
-            validation_data=val_datagen.flow(x_validation, y_validation, batch_size=BATCH_SIZE),
+            validation_data=val_datagen.flow(train_data.get_validation_inputs(), train_data.get_validation_outputs(), batch_size=BATCH_SIZE),
             use_multiprocessing=False,
             shuffle=True,
             # initial_epoch=1     # Wskazanie od której epoki rozpocząć uczenie
@@ -130,8 +129,8 @@ def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
 
 def asses_model_on_CIFAR10(model, BATCH_SIZE=128):
 
-    [x_train, x_validation, x_test], [y_train, y_validation, y_test] = NNLoader.load_CIFAR10()
-    TEST_SIZE = len(x_test)
+    train_data = NNLoader.load_CIFAR10()
+    TEST_SIZE = len(train_data.get_test_outputs())
 
     val_generator = ImageDataGenerator(rescale=1. / 255,
                                         samplewise_center=True,  # set each sample mean to 0
@@ -139,7 +138,7 @@ def asses_model_on_CIFAR10(model, BATCH_SIZE=128):
                                         )
 
     scores = model.evaluate_generator(
-            val_generator.flow(x_test, y_test, batch_size=BATCH_SIZE),
+            val_generator.flow(train_data.get_test_inputs(), train_data.get_training_outputs(), batch_size=BATCH_SIZE),
             steps=TEST_SIZE // BATCH_SIZE,
             verbose=1,
             )
@@ -149,7 +148,7 @@ def asses_model_on_CIFAR10(model, BATCH_SIZE=128):
 
 
 if __name__ == '__main__':
-    model = tran_VGG16_on_CIFAR10()
+    model = tran_VGG16_on_CIFAR10(64)
     asses_model_on_CIFAR10(model)
 
     

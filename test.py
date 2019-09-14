@@ -52,14 +52,17 @@ x = calculate_the_values_in_the_range(minimum, maximum, percentage_increases)
 y = np.array([1, 0.8, 0.31, 0.15, 0.07, 0.02, 0, 0])
 tck = interpolate.splrep(x, y, s=0.001)
 xnew = np.linspace(minimum, maximum, num=41, endpoint=True)
-ynew = interpolate.splev(xnew, tck, der=0)
+x = np.arange(minimum, maximum, 0.01)
+ynew = interpolate.splev(x, tck, der=0)
 
 y2 = []
 for element in x:
-    y2.append(calculate_percent_of_filters_to_remove(element/100, maximum))
+    y2.append(interpolate.splev(element, tck, der=0))
 
 plt.figure()
-plt.plot(xnew, ynew, '-', x, y, 'o', x, y2, '--')
+plt.plot(x, ynew, '-')
+plt.xlabel('Przyrost dokładności warstwy [%]')
+plt.ylabel('Ilość usuniętych filtrów [%]')
 # plt.legend(['Linear', 'Cubic Spline', 'True'])
 # plt.axis([-0.05, 6.33, -1.05, 1.05])
 # plt.title('Cubic-spline interpolation')

@@ -23,16 +23,16 @@ def test_model(model, generator):
 
 def main():
 
-    remove_all_if_bellow = [0.0075]
-    increase_by = [0.3]
+    remove_all_if_bellow = [0.0075, 0.015, 0.03, 0.075]
+    increase_by = [0.015, 0.075, 0.15, 0.3]
 
     my_optymalization = True
     optymalization_with_removing_random_filters = True
     optymalization_from_paper = True
 
-    number_of_repeatrs = 1
+    number_of_repeatrs = 3
 
-    for zbior in range(1, 2):
+    for zbior in range(4, 5):
         path = os.path.join('NetworkA', 'fold' + str(zbior))
         network_name = get_list_of_files_in_directory(path)[0]
         path_to_model = os.path.join(path, network_name)

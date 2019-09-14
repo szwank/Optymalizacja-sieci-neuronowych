@@ -499,7 +499,7 @@ def get_accuracy_of_group_of_filters_in_layer(filters_accuracy_dict: dict, conv_
     number_of_filters_in_actual_layer = len(filters_accuracy_dict[str(conv_layer_number)]['accuracy'])
 
     for number_of_grup_of_filters in range(number_of_filters_in_actual_layer):  # corventing
-        item = {number_of_grup_of_filters: filters_accuracy_dict[str(conv_layer_number + 1)]['accuracy'][
+        item = {number_of_grup_of_filters: filters_accuracy_dict[str(conv_layer_number)]['accuracy'][
             number_of_grup_of_filters]}
         filters_accuracy_in_layer.update(item)
 
@@ -793,7 +793,7 @@ def knowledge_distillation(path_to_shallowed_model,
                                                      verbose=1, mode='auto', cooldown=3, min_lr=0.0005, min_delta=0.002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
-            filepath=scierzka_zapisu + "/weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
+            filepath=scierzka_zapisu + "weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
             monitor=monitor,
             save_best_only=True, period=1, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor=monitor,

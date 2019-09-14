@@ -29,3 +29,4 @@ test networks.py
 *.tar.gz
 x
 *.pyc
+knowledge_distillation_VGG16.py

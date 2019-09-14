@@ -24,11 +24,6 @@ class DataGenerator_for_knowledge_distillation(Sequence):
         else:
             y = np.tile(y_unit, (1, self.repeat_correct_labels_x_times))
 
-
-        # y = []
-        # for i in range(self.repeat_correct_labels_x_times):
-        #     y.append(y_unit)
-
         x = []
         for i in range(self.number_of_repetitions_of_input_data):
             x.append(x_unit)

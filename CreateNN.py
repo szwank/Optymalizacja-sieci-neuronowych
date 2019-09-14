@@ -6,7 +6,7 @@ import tensorflow as tf
 class CreateNN:
 
     @staticmethod
-    def create_VGG16_for_CIFAR10(weight_decay=0.0001):
+    def create_VGG16_for_CIFAR10():
         inputs = Input(shape=(32, 32, 3))
 
         x = Conv2D(64, (3, 3), padding='same')(inputs)
@@ -132,32 +132,6 @@ class CreateNN:
         return model
 
     @staticmethod
-    def loss_for_knowledge_distillation_layer(args, alpha=0.2, T=5):
-        """Sztuczka! Przekazanie obliczania lossu sieci neurnonowej do ostatniej warstwy
-
-        # Argumenty
-            args (tensor): wyjście softmax i logów z orginalnej sieci oraz wyjście softmax i logów z uczonej sieci
-
-        # Zwraca (tensor): loss danej sieci
-        """
-
-        ground_truth, logits, ground_truth_student, logits_student = args
-
-        first_part = - K.sum(ground_truth * K.log(ground_truth_student + K.epsilon()), axis=1, keepdims=True)
-
-        q_denominator = K.exp((logits_student - K.max(logits_student, axis=1, keepdims=True)) / T)
-        q_devider = K.sum(q_denominator, axis=1, keepdims=True)
-        q = q_denominator/q_devider
-
-        p_denominator = K.exp((logits - K.max(logits, axis=1, keepdims=True)) / T)
-        p_devider = K.sum(p_denominator, axis=1, keepdims=True)
-        p = p_denominator / p_devider
-
-        second_part = - alpha * K.sum(p * K.log(q + K.epsilon()), axis=1, keepdims=True)
-
-        return first_part + second_part
-
-    @staticmethod
     def soft_softmax_layer(T=15):
         def soft_softmax(args):
             denominator = K.exp((args - K.max(args, axis=1, keepdims=True)) / T)   # przeskalowanie zapobiega błędom obliczeniowym
@@ -222,5 +196,3 @@ class CreateNN:
 
         model = Model(inputs=inputs, outputs=x)
         return model
-
-

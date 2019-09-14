@@ -13,7 +13,7 @@ Zapis modelu-uciete/**
 data/**
 code/Zapis modelu/**
 NetworkA/**
-
+models_structures
 
 # Ignorowanie poszczegulnych plików
 *.hdf5

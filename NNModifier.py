@@ -21,42 +21,6 @@ class NNModifier:
 
 
     @staticmethod
-    def add_clasyficator_to_each_conv_layer(model):
-        # Rozbicie sieci na warstey
-        layers = [l for l in model.layers]
-
-        # Inicjalizacja zmiennych
-        number_new_outs = 0
-        input = layers[0].output
-        outputs = []
-
-        x = input
-
-        for i in range(1, len(layers)):
-                # x = layers[i](input)
-            layers[i].trainable = False
-            x = layers[i](x)    # Łączenie warstw sieci neuronowej
-
-
-            if type(layers[i]) is Conv2D:   # Sprawdzenie czy warstwa jest konwolucyjna.
-                                            # Jeżeli jest dodanie klasyfikatora na jej wyjście.
-                number_new_outs += 1
-                t = Flatten()(x)
-                t = Dense(1000)(t)
-                t = Dense(10)(t)
-                t = Softmax()(t)
-                outputs.append(t)            # dodanie wyjścia do listy wyjść
-
-        outputs.append(x)    # Dodanie ostatniego wyjścia
-
-        new_model = Model(input, outputs)
-
-        plot_model(new_model, to_file='new_model.png')      # Debug. Stworzenie rysunku ze strukturą sieci
-
-        return new_model, number_new_outs
-
-
-    @staticmethod
     def cut_model_to(model, cut_after_layer, leave_layers=[]):
         """Metoda zwraca model ucięty do wskazanej warstwy konwolucyjnej."""
         if not leave_layers:        # sprawdzenie czy lista leave_layers jest pusta
@@ -118,9 +82,8 @@ class NNModifier:
     @staticmethod
     def remove_chosen_conv_layers(model: Model, layers_numbers_to_remove: list):
         """Metoda usuwa wskazane warstwy konwolucyjne wraz z odpowiadającymi im warstwami Batch normalization oraz ReLU
-        jeżeli takie istnieją. Usuwanie odbywa się na słowniku przekonwertowanych z JSON. W konsoli wypisywane są nazwy
-        usuwanych warstw. Metoda towrzy grafy sieci przed i po usunięciu warst w folderze temp. Nazwy plików to
-        odpowiednio original_model.png oraz shallowed_model.png.
+        jeżeli takie istnieją. W konsoli wypisywane są nazwy usuwanych warstw. Metoda towrzy grafy sieci przed i po
+        usunięciu warst w folderze temp. Nazwy plików to odpowiednio original_model.png oraz shallowed_model.png.
 
         Argumęty:
         model- model sieci neuronowej która jest usuwana
@@ -215,15 +178,6 @@ class NNModifier:
 
         return json_object
 
-    @staticmethod
-    def replace_softmax_layer_with_soft_softmax_layer(model, Temperature=100):
-        output = Lambda(CreateNN.soft_softmax_layer)(model.layers[-1])
-        return Model(inputs=model.inputs, outputs=output)
-
-
-    @staticmethod
-    def remove_loos_layer(model):
-        return Model(inputs=model.inputs[2], outputs=model.layers[-2].output)
 
     @staticmethod
     def rename_choosen_conv_layers(model, chosen_layer_list):
@@ -340,67 +294,6 @@ class NNModifier:
         return model
 
     @staticmethod
-    def split_last_conv_block_on_x_groups(model, split_on_x_new_filters, kernel_dimension=(3, 3), pading='same'):
-
-        output_layers = []
-
-        conv_layer_name_first_part = 'splited_conv2d_'
-        batch_normalization_name_first_part = 'splited_batch_normalization_'
-        relu_name_first_part = 'splited_relu_'
-        for i in range(1, len(model.layers) + 1):
-            if 'conv2d' in model.layers[-i].name:
-                conv_weights = model.layers[-i].get_weights()
-                conv_weights[0] = np.swapaxes(conv_weights[0], 0, 3)
-                conv_weights[0] = np.swapaxes(conv_weights[0], 1, 2)
-                number_of_filters = model.layers[-i].filters
-                if 'batch_normalization' in model.layers[-i + 1].name:
-                    batch_normalization_weights = model.layers[-i + 1].get_weights()
-
-                for j in range(split_on_x_new_filters):
-                    x = Conv2D(int(number_of_filters / split_on_x_new_filters), kernel_dimension, padding=pading,
-                               name=conv_layer_name_first_part + str(j))(model.layers[-i - 1].output)
-                    x = BatchNormalization(name=batch_normalization_name_first_part + str(j))(x)
-                    x = ReLU(name=relu_name_first_part + str(j))(x)
-                    output_layers.append(x)
-                break
-
-        if output_layers is []:
-            raise TypeError("Model don't have convolutional layer")
-
-        model.save('temp/model.h5')
-        model = Model(inputs=model.inputs, outputs=output_layers)
-        model.load_weights('temp/model.h5', by_name=True)
-        os.remove('temp/model.h5')
-
-        for layer in model.layers:
-            layer_name = layer.name
-            if conv_layer_name_first_part in layer_name:
-                conv_layer_number = int(layer_name[-1])
-                start_index = conv_layer_number * int(number_of_filters / split_on_x_new_filters)
-                end_index = (conv_layer_number + 1) * int(number_of_filters / split_on_x_new_filters)
-                layer_weights = conv_weights[0][start_index:end_index]
-                layer_weights = np.swapaxes(layer_weights, 0, 3)
-                layer_weights = np.swapaxes(layer_weights, 1, 2)
-
-                layer_biases = conv_weights[1][start_index:end_index]
-
-                layer.set_weights([layer_weights, layer_biases])
-                break
-
-            if batch_normalization_name_first_part in layer_name:
-                batch_normalization_layer_number = int(layer_name[-1])
-                start_index = batch_normalization_layer_number * int(number_of_filters / split_on_x_new_filters)
-                end_index = (batch_normalization_layer_number + 1) * int(number_of_filters / split_on_x_new_filters)
-                layer_weights = []
-                for narray in batch_normalization_weights:
-                    layer_weights.append(narray[start_index:end_index])
-
-                layer.set_weights(layer_weights)
-                break
-
-        return model
-
-    @staticmethod
     def add_clssifiers_to_the_all_ends(model, size_of_clasifier: tuple):
         model.save('temp/model.h5')
         activation_outputs = []
@@ -429,15 +322,6 @@ class NNModifier:
 
         return model
 
-    @staticmethod
-    def add_concentrate_output_to_the_end(model):
-        model.save('temp/model.h5')
-        concentrate_output = concatenate(model.outputs)
-        model.outputs.append(concentrate_output)
-        model = Model(model.inputs, model.outputs)
-        model.load_weights('temp/model.h5', by_name=True)
-
-        return model
     @staticmethod
     def remove_chosen_filters_from_model(model, chosen_filters_to_remove: dict, filters_in_grup, debug=False):
         model_dictionary = json.loads(model.to_json())
@@ -555,10 +439,6 @@ class NNModifier:
         model = NNLoader.load_weights_from_list(model, model_weights, debug)
         return model
 
-    @staticmethod
-    def remove_argument_duplicates(the_list: list):
-        return list(dict.fromkeys(the_list))
-
 
     @staticmethod
     def check_if_list_have_duplicat_arguments(the_list: list):
@@ -587,11 +467,6 @@ class NNModifier:
         weights = np.swapaxes(weights, 0, 3)
         weights = np.swapaxes(weights, 1, 2)
         return weights
-
-    @staticmethod
-    def freeze_all_layers_weights(model: Model):
-        for layer in model.layers:
-            layer.trainable = False
 
     @staticmethod
     def remove_choosen_last_conv_blocks(model, start_index, end_index):

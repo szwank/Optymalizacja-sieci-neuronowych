@@ -30,6 +30,3 @@ class TestDataLoader(unittest.TestCase):
             object.get_generator_flow(data_generator=mock_image_data_generator, batch_size=1, shuffle=True,
                                       type_of_generator='train')
 
-class TestDataLoaderFromMemory(unittest.TestCase):
-
-    def test_init

@@ -17,37 +17,19 @@ from NNLoader import NNLoader
 from NNSaver import NNSaver
 
 def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
-    # Parametry modelu/ uczenia
+
     BATCH_SIZE = batch_size
-    NUM_CLASSES = 10
-    # Stworzenie sieci neuronowej
-    original_network = CreateNN.create_VGG16_for_CIFAR10(0.0001)
-    
-    # Zapis seici
-    # NNSaver.save(original_network, 'model1.txt')
-    
-    
-    # Wczytanie sieci
-    # original_network = NNLoader.load('model1.txt')
-    # original_network.summary()
-    # Wczytanie wag
-    # original_network.load_weights('Zapis modelu/19-03-04 13-18/weights-improvement-99-0.85.hdf5', by_name=True)
-    # original_network = keras.models.load_model('temp/model.hdf5')
-    # original_network = keras.models.load_model('Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5')
+
+    original_network = CreateNN.create_VGG16_for_CIFAR10()
     original_network.summary()
-    # original_network.load_weights('Zapis modelu/VGG16_Cifar10_moje_wagi_86%.hdf5', by_name=True)
-    # Rysowanie struktury sieci neuronowej
-    # plot_model(original_network, to_file='model.png')       # Stworzenie pliku z modelem sieci
-    
+
     # Ustawienia kompilera
     optimizer = SGD(lr=learning_rate, momentum=0.9, nesterov=True, decay=0)
     original_network.compile(optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
-    
-    
+
     # Wczytanie bazy zdjęć
     train_data = NNLoader.load_CIFAR10()
 
-    
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     save_model_relative_path = 'Zapis modelu/' + str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") + '/')
     save_model_absolute_path = os.path.join(os.getcwd(), save_model_relative_path)
@@ -60,7 +42,6 @@ def tran_VGG16_on_CIFAR10(batch_size=128, learning_rate=0.1):
     if not os.path.exists(save_log_absolute_path):  # stworzenie folderu jeżeli nie istnieje
         os.makedirs(save_log_absolute_path)
 
-    # Callback
     learning_rate_regulation = keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=3, verbose=1, mode='auto', cooldown=7, min_lr=0.0005)
     csv_logger = keras.callbacks.CSVLogger('training.log')                          # Tworzenie logów
     tensorBoard = keras.callbacks.TensorBoard(log_dir=save_log_relative_path)               # Wizualizacja uczenia

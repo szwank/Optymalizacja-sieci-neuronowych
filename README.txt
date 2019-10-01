@@ -15,3 +15,5 @@ I created this application for my Master’s thesis.
 - cuDNN toolkit
 - Tensorflow-gpu 1.12.0
 - Keras 2.2.4
+
+- dataset photos of skin changes

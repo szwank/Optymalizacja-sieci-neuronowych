@@ -71,7 +71,7 @@ class CreateNN:
         return model
 
     @staticmethod
-    def create_VGG16_for_CIFAR10_v2(weight_decay=0.001):
+    def create_VGG16_for_CIFAR10_v2():
         inputs = Input(shape=(32, 32, 3))
 
         x = Conv2D(64, (3, 3), padding='same')(inputs)

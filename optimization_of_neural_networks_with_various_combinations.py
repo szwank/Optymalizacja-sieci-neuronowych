@@ -40,8 +40,8 @@ def main():
         model_hash = NNHasher.hash_model(model)
         K.clear_session()
 
-        path_to_assesing_file_full_layers = os.path.join('NetworkA', model_hash)
-        path_to_assesing_file_single_filters = os.path.join('NetworkA', model_hash + 'v2')
+        path_to_assesing_file_full_layers = os.path.join('Network scores', model_hash)
+        path_to_assesing_file_single_filters = os.path.join('Network scores', model_hash + 'v2')
 
         integrity_result = check_integrity_of_score_file(path_to_assesing_file_single_filters, model_dict)
 

@@ -32,37 +32,6 @@ class TestLossLayer(unittest.TestCase):
             loss_layer_input = [-i * x, i * x, -i * x, i * x]
             self.assertAlmostEqual(self.loss_layer(loss_layer_input), self.loss(-i * y, i * y, -i * y, i * y), 2)
 
-    def test_loos_layer_biger_numbers(self):
-        x = np.ones(shape=(1, 10))
-        y = np.ones(10)
-
-        for i in [199.88783, 1034, 4236.883218, 7990]:
-            print(i)
-            loss_layer_input = [i * x, i * x, i * x, i * x]
-            self.assertAlmostEqual(self.loss_layer(loss_layer_input), self.loss(i * y, i * y, i * y, i * y), 2)
-
-    @staticmethod
-    def loss_layer(x):
-
-        ground_truth = Input(shape=(10,), name='ground_truth')  # Dodatkowej wejście na wyjścia z orginalnej sieci(SoftMax)
-        logits = Input(shape=(10,), name='logits')  # Dodatkowe wejście na wyjścia z orginalnej sieci(warstwa przed SoftMax)
-        ground_truth_student = Input(shape=(10,), name='ground_truth_student')  # Dodatkowej wejście na wyjścia z orginalnej sieci(SoftMax)
-        logits_student = Input(shape=(10,), name='logits_student')  # Dodatkowe wejście na wyjścia z orginalnej sieci(warstwa przed SoftMax)
-
-        # Warstwa obliczająca loss dla procesu knowledge distillation
-        output = Lambda(CreateNN.loss_for_knowledge_distillation_layer, name='loss')([ground_truth, logits,
-                                                                                    ground_truth_student,
-                                                                                    logits_student])
-
-        model = Model(inputs=(ground_truth, logits, ground_truth_student, logits_student), outputs=output)
-
-        prediction = model.predict(x=x)
-        K.clear_session()
-        return float(prediction)
-
-    def test_loos_method(self):
-        pass
-
     @staticmethod
     def loss(ground_truth, logits, ground_truth_student, logits_student):
         T = 300

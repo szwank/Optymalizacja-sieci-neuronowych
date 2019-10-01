@@ -1,23 +1,56 @@
-from keras import backend as K
-from keras.losses import categorical_crossentropy, mean_squared_error, mean_absolute_error
+import keras.backend as K
 import tensorflow as tf
+from keras.losses import binary_crossentropy, mean_squared_error, mean_absolute_error
+
 
 def categorical_crossentropy_loss(y_true, y_pred):
     return - K.sum(y_true * K.log(y_pred + K.epsilon()), keepdims=True, axis=-1)
 
+def tensorflow_binary_corssentropy(target, output, from_logits=False):
+    if not from_logits:
+        # transform back to logits
+        _epsilon = tf.convert_to_tensor(K.epsilon(), output.dtype.base_dtype)
+        output = tf.clip_by_value(output, _epsilon, 1 - _epsilon)
+        output = tf.log(output / (1 - output))
 
-def knowledge_distillation_loos(alpha_const, temperature):
-    def knowledge_distillation(y_true, y_pred):
-        y_true, logits = y_true[:, :10], y_true[:, 10:]
+    return tf.nn.sigmoid_cross_entropy_with_logits(labels=target,
+                                                   logits=output)
 
-        y_soft = K.softmax(logits/temperature)
+def binary_crossentropy_loss(y_true, y_pred):
+    return K.mean(tensorflow_binary_corssentropy(y_true, y_pred), axis=-1, keepdims=True)
 
-        y_pred, logits_pred = y_pred[:, :10], y_pred[:, 10:]
 
-        y_soft_pred = K.softmax(logits_pred / temperature)
+def categorical_knowledge_distillation_loos(alpha_const, temperature, number_of_outputs_in_last_layer):
+    def categorical_knowledge_distillation(y_true, y_pred):
+        y_true = y_true[:, :number_of_outputs_in_last_layer]
+
+        y_pred, logits_shallowed_pred, original_logits = y_pred[:, :number_of_outputs_in_last_layer],\
+                                                         y_pred[:, number_of_outputs_in_last_layer:number_of_outputs_in_last_layer * 2],\
+                                                         y_pred[:, number_of_outputs_in_last_layer * 2:]
+
+        y_soft = K.softmax(original_logits / temperature)
+
+        y_soft_pred = K.softmax(logits_shallowed_pred / temperature)
 
         return (1-alpha_const) * categorical_crossentropy_loss(y_true, y_pred) + alpha_const * categorical_crossentropy_loss(y_soft, y_soft_pred)
-    return knowledge_distillation
+    return categorical_knowledge_distillation
+
+
+def binary_knowledge_distillation_loos(alpha_const, temperature, number_of_outputs_in_last_layer):
+    def binary_knowledge_distillation(y_true, y_pred):
+
+        y_true = y_true[:, :number_of_outputs_in_last_layer]
+
+        y_pred, logits_shallowed_pred, original_logits = y_pred[:, :number_of_outputs_in_last_layer],\
+                                                         y_pred[:, number_of_outputs_in_last_layer:number_of_outputs_in_last_layer * 2],\
+                                                         y_pred[:, number_of_outputs_in_last_layer * 2:]
+
+        y_soft = K.sigmoid(original_logits / temperature)
+
+        y_soft_pred = K.sigmoid(logits_shallowed_pred / temperature)
+
+        return (1-alpha_const) * binary_crossentropy(y_true, y_pred) + alpha_const * binary_crossentropy(y_soft, y_soft_pred)
+    return binary_knowledge_distillation
 
 
 def loss_of_ground_truth(y_true, y_pred):

@@ -28,8 +28,8 @@ class FileManager:
                                                                         # równą od number_files_to_be_insignificant
 
     @staticmethod
-    def create_folder(folder_name):
-        scierzka_zapisu_dir = os.path.join(os.getcwd(), folder_name)
+    def create_folder(path):
+        scierzka_zapisu_dir = os.path.join(os.getcwd(), path)
         if not os.path.exists(scierzka_zapisu_dir):  # stworzenie folderu jeżeli nie istnieje
             os.makedirs(scierzka_zapisu_dir)
 

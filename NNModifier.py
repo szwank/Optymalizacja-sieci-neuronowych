@@ -1,7 +1,7 @@
 import tensorflow.keras as keras
 import tensorflow as tf
 from keras.layers import Input, Dense, MaxPool2D, Conv2D, Flatten, Dropout, Activation, Softmax, Lambda,\
-    BatchNormalization, ReLU, concatenate
+    BatchNormalization, ReLU, concatenate, LeakyReLU
 from keras import regularizers
 from keras.models import Model, model_from_json
 from keras.utils import plot_model
@@ -13,6 +13,7 @@ import numpy as np
 import json
 import os
 import keras.backend as K
+
 
 
 class NNModifier:
@@ -88,15 +89,30 @@ class NNModifier:
             return model
 
     @staticmethod
-    def add_classifier_to_end(model, number_of_neurons=512, number_of_classes=10, weight_decay=0.0001):
+    def add_classifier_to_end(model, size_of_clasifier):
 
-        y = model.output
+        model.save('temp/model.h5')
+
+        y = model.layers[-1].output
         y = Lambda(lambda x: K.stop_gradient(x))(y)
-        y = Flatten()(y)
-        y = Dense(number_of_classes, name='Added_classifier_2')(y)
-        y = BatchNormalization(name='Added_normalization_layer')(y)
-        y = Softmax(name='Added_Softmax')(y)
-        return Model(model.input, y)
+        y = Flatten(name='Added_flatten_layer')(y)
+        for j in range(len(size_of_clasifier)):
+            y = Dense(size_of_clasifier[j], name='Added_classifier_' + str(j))(y)
+            y = BatchNormalization(name='Added_normalization_layer_' + str(j))(y)
+
+            if j + 1 > len(size_of_clasifier) - 1:
+                if size_of_clasifier[-1] is 1:
+                    y = Activation('sigmoid')(y)
+                else:
+                    y = Softmax(name='Added_Softmax_' + str(j))(y)
+            else:
+                y = LeakyReLU(0.2, name='Added_LeakyReLU_' + str(j))(y)
+
+        model = Model(model.input, y)
+        model.load_weights('temp/model.h5', by_name=True)
+        os.remove('temp/model.h5')
+
+        return model
 
 
     @staticmethod
@@ -115,7 +131,7 @@ class NNModifier:
         model sieci neurnowej z usuniętymi warstwami.
         """
 
-        Create_NN_graph.create_NN_graph(model, name='original_model.png')   # Utworzenie grafu orginalnej sieci
+        # Create_NN_graph.create_NN_graph(model, name='original_model.png')   # Utworzenie grafu orginalnej sieci
 
         conv_layer_number = 1  # Licznik warstw konwolucyjnych
         number_of_removed_layers = 0
@@ -189,8 +205,7 @@ class NNModifier:
         print('Deleting block associated with', conv_name)
         # Sprawdzanie czy trzy następne warstwy to usuwana warstwa konwolucyjna i jej batch normalization oraz ReLU.
         for i in range(3):
-            if (json_object["config"]["layers"][layer_number]["class_name"] == 'BatchNormalization' or
-                    json_object["config"]["layers"][layer_number]["class_name"] == 'ReLU' or
+            if (json_object["config"]["layers"][layer_number]["class_name"] in ['BatchNormalization', 'ReLU', 'LeakyReLU'] or
                     json_object["config"]["layers"][layer_number]["name"] == conv_name):
                 json_object = NNModifier.remove_chosen_layer_from_json_string(json_object, layer_number) # Usunięcie warstwy
             else:
@@ -215,7 +230,7 @@ class NNModifier:
         json_model = model.to_json(indent=4)  # Przekonwertowanie modelu na słownik
         json_object = json.loads(json_model)
 
-        with_conv = 0
+        with_conv = 1
         number_of_layers = len(json_object["config"]["layers"])
 
         for layer_number in range(number_of_layers):  # Iteracja po warstwach w modelu
@@ -229,15 +244,40 @@ class NNModifier:
         model = model_from_json(json_model)
         return model
 
+    @staticmethod
+    def rename_first_dense_layer(model):
+        json_model = model.to_json(indent=4)  # Przekonwertowanie modelu na słownik
+        json_object = json.loads(json_model)
+
+        number_of_layers = len(json_object["config"]["layers"])
+
+        for layer_number in range(number_of_layers):  # Iteracja po warstwach w modelu
+            if json_object["config"]["layers"][layer_number]["class_name"] == 'Dense':  # Sprawdzenie czy warstwa jest Dense
+                json_object = NNModifier.add_phrase_to_layer_name(json_object, layer_number, '_changed')
+                break
+
+        json_model = json.dumps(json_object)  # przekonwertowanie słownika z modelem sieci nauronowej spowrotem na model
+        model = model_from_json(json_model)
+        return model
+
 
     @staticmethod
-    def add_phrase_to_layer_name(json_object, layer_number, phrase):
-        old_layer_name = json_object["config"]["layers"][layer_number]["name"]
+    def add_phrase_to_layer_name(model: dict, layer_number, phrase):
+        old_layer_name = model["config"]["layers"][layer_number]["name"]
         new_name = "".join([old_layer_name, phrase])
-        json_object["config"]["layers"][layer_number]["name"] = new_name
-        json_object["config"]["layers"][layer_number]['config']["name"] = new_name
-        json_object["config"]["layers"][layer_number + 1]['inbound_nodes'][0][0][0] = new_name
-        return json_object
+
+        model["config"]["layers"][layer_number]["name"] = new_name
+        model["config"]["layers"][layer_number]['config']["name"] = new_name
+
+        if layer_number == 0:
+            model["config"]["input_layers"][0][0] = new_name
+
+        if layer_number + 1 < len(model["config"]["layers"]):  #
+            model["config"]["layers"][layer_number + 1]['inbound_nodes'][0][0][0] = new_name
+        else:
+            model["config"]["output_layers"][0][0] = new_name
+
+        return model
 
     @staticmethod
     def split_last_conv_block_on_groups(model, filters_in_grup_after_division, kernel_dimension=(3, 3), pading='same'):
@@ -361,7 +401,7 @@ class NNModifier:
         return model
 
     @staticmethod
-    def add_clssifiers_to_the_all_ends(model, number_of_classes):
+    def add_clssifiers_to_the_all_ends(model, size_of_clasifier: tuple):
         model.save('temp/model.h5')
         activation_outputs = []
         for i, output in enumerate(model.output):
@@ -369,15 +409,24 @@ class NNModifier:
             y = output
             y = Lambda(lambda x: K.stop_gradient(x))(y)
             y = Flatten()(y)
-            y = Dense(number_of_classes, name='Added_classifier_'+str(i))(y)
-            y = BatchNormalization(name='Added_normalization_layer_'+str(i))(y)
-            y = Softmax(name='Added_Softmax_'+str(i))(y)
+            for j in range(len(size_of_clasifier)):
+                y = Dense(size_of_clasifier[j], name='Added_classifier_' + str(i) + '_' + str(j))(y)
+                y = BatchNormalization(name='Added_normalization_layer_' + str(i) + '_' + str(j))(y)
+
+                if j+1 > len(size_of_clasifier)-1:
+                    if size_of_clasifier[-1] is 1:
+                        y = Activation('sigmoid', name='Added_Sigmoid_' + str(i) + '_' + str(j))(y)
+                    else:
+                        y = Softmax(name='Added_Softmax_' + str(i) + '_' + str(j))(y)
+                else:
+                    y = LeakyReLU(0.0000005, name='Added_LeakyReLU_' + str(i) + '_' + str(j))(y)
+
             activation_outputs.append(y)
 
-        # output = concatenate(activation_outputs)
+        model = Model(model.input, activation_outputs)
         model.load_weights('temp/model.h5', by_name=True)
         os.remove('temp/model.h5')
-        model = Model(model.input, activation_outputs)
+
         return model
 
     @staticmethod
@@ -448,7 +497,7 @@ class NNModifier:
 
                     if len(actual_filters_to_remove) > model_dictionary['config']['layers'][layer_number - remove_layer_counter]['config']['filters']:
                         raise ValueError("In 'chosen_filters' list's {}th argument, there are to many arguments."
-                                         "In {}ts layer there are not so many filters to remove.".format(actual_conv_layer_number, actual_conv_layer_number))
+                                         "In {}th layer there are not so many filters to remove.".format(actual_conv_layer_number, actual_conv_layer_number))
 
 
 
@@ -581,3 +630,23 @@ class NNModifier:
                 if int(splited_layer_name[-1]) in interwal_of_layer_numbers:
                     del model_dictionary['config']['layers'][layer_number - removed_layers]
                     removed_layers += 1
+
+    @staticmethod
+    def convert_model_to_dictionary(model: Model):
+        json_string = model.to_json()
+        return json.loads(json_string)
+
+    @staticmethod
+    def convert_dictionary_model_to_model(model: dict):
+        return model_from_json(json.dumps(model))
+
+    @staticmethod
+    def add_phrase_to_all_layers_name(model: Model, phrase):
+        model.save('temp/model.h5')
+        model_dictionary = NNModifier.convert_model_to_dictionary(model)
+        for i in range(len(model_dictionary['config']['layers'])):
+            model_dictionary = NNModifier.add_phrase_to_layer_name(model_dictionary, i, phrase)
+
+        model = NNModifier.convert_dictionary_model_to_model(model_dictionary)
+        model.load_weights('temp/model.h5')
+        return model

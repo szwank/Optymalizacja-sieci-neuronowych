@@ -3,12 +3,26 @@ from keras.models import model_from_json
 from keras.datasets import cifar10
 from keras.utils import np_utils
 from keras.models import load_model
+from DataStorage import DataStorage
+from TrainingData import TrainingData
 import os
 import re
-
+import time
 
 
 class NNLoader:
+    def try_load_model(path_to_model: str, compile: bool = True, number_of_trials: int = 10):
+        try:
+            return load_model(path_to_model, compile=compile)
+        except:
+            if number_of_trials > 0:
+                time.sleep(0.5)
+                number_of_trials -= 1
+                return NNLoader.try_load_model(path_to_model, compile, number_of_trials)
+            else:
+                raise ValueError("Cannot open model in path {}. The number of attempts to load model has been exceeded."
+                                 " Check if path is correct.".format(path_to_model))
+
 
     @staticmethod
     def load(file_name):
@@ -42,8 +56,11 @@ class NNLoader:
         y_validation = np_utils.to_categorical(y_validation, NUM_CLASSES)
         y_test = np_utils.to_categorical(y_test, NUM_CLASSES)
 
+        input_data = DataStorage(x_train, x_validation, x_test)
+        output_labels = DataStorage(y_train, y_validation, y_test)
+        training_data = TrainingData(input_data, output_labels)
 
-        return [x_train, x_validation, x_test], [y_train, y_validation, y_test]
+        return training_data
 
     @staticmethod
     def load_best_model_from_dir(directory, mode):
@@ -71,7 +88,7 @@ class NNLoader:
                         best_evaluation_parameter = evaluation_parameter
                         position_of_best = i
 
-        return load_model(os.path.join(directory, list_of_files_names[position_of_best]))
+        return NNLoader.try_load_model(os.path.join(directory, list_of_files_names[position_of_best]), compile=False)
 
     @staticmethod
     def load_best_weights_from_dir(model, directory):

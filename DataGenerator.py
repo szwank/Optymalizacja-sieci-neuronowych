@@ -30,13 +30,13 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
         """Generate one batch of data"""
         # Generate indexes of the batch
-        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
+        # indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
 
         # Find list of IDs
         # list_IDs_temp = [self.list_IDs[k] for k in indexes]
 
         # Generate data
-        X, y = self.__data_generation(indexes)
+        X, y = self.__data_generation(index)
 
         return X, y
 

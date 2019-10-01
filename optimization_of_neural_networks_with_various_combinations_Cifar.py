@@ -73,7 +73,7 @@ def main():
     remove_all_if_bellow = [0.0075, 0.015, 0.03, 0.075]
     increase_by = [0.015, 0.075, 0.15, 0.3]
 
-    my_optymalization = False
+    my_optymalization = True
     optymalization_with_removing_random_filters = True
     optymalization_from_paper = True
 

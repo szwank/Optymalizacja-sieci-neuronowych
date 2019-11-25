@@ -1,4 +1,4 @@
-## Description
+# Description
 
 The program allows to train and optimize the structure of convolutional neural networks by removing redundant convolutional layers and filters in a convolutional layer. The program analyzes the influence of the accuracy of each convolutional layer and each filter in convolutional layers. Based on the analysis, individual filters and whole layers could be removed from the neural network structure by the assumed heuristic. Later to recover accuracy of the optimized neural network, a process called knowledge distillation is used. It this process optimized neural network is trying to approximate all answers, even from wrong classes, of bigger neural network.
 
@@ -18,4 +18,4 @@ I created this application for my Master’s thesis.
 - Tensorflow-gpu 1.12.0
 - Keras 2.2.4
 
-- dataset photos of skin changes (not included)
+ Dataset photos of skin changes (not included)

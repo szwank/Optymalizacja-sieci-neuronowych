@@ -18,4 +18,4 @@ I created this application for my Master’s thesis.
 - Tensorflow-gpu 1.12.0
 - Keras 2.2.4
 
- Dataset photos of skin changes (not included)
+ Dataset photos of skin changes (not included) ISIC dataset

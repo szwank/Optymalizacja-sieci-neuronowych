@@ -30,3 +30,5 @@ test networks.py
 x
 *.pyc
 knowledge_distillation_VGG16.py
+.vscode/
+logs/

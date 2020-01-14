@@ -12,11 +12,10 @@ from keras.applications.resnet_v2 import ResNet50V2
 import os
 from keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau
 from datetime import datetime
-learning_rate = 0.01
+learning_rate = 0.001
 batch_size = 16
 dataset_location = '/media/dysk/datasets/isic_challenge_2017/'
 
-# dataset_location = '/media/dysk/datasets/isic_challenge_2017_without_segmentation/'
 traindatagen = ImageDataGenerator(
         featurewise_std_normalization=True,
         featurewise_center=True,
@@ -42,15 +41,12 @@ validdatagen.fit(meangenerator.next()[0])
 traingenerator=traindatagen.flow_from_directory(os.path.join(dataset_location, 'train'),class_mode='binary',classes=['ben','mal'],target_size=(224,224),batch_size=batch_size,shuffle=True)
 validgenerator=validdatagen.flow_from_directory(os.path.join(dataset_location, 'valid'),class_mode='binary',classes=['ben','mal'],target_size=(224,224),batch_size=batch_size,shuffle=False)
 input_tensor = Input(shape=(224,224,3))
-# model = VGG16(include_top=False, weights=None, input_tensor=input_tensor)
-# x = Flatten(name='flatten')(model.output)
-# x = Dense(4096, activation='relu')(x)
-# x=Dropout(0.5)(x)
-# x = Dense(4096, activation='relu')(x)
-# x=Dropout(0.5)(x)
-model = ResNet50V2(include_top=False, weights='imagenet', input_tensor=input_tensor, pooling='avg')
-# x = Flatten(name='flatten')(model.output)
-x = model.output
+model = VGG16(include_top=False, weights='imagenet', input_tensor=input_tensor)
+x = Flatten()(model.output)
+x = Dense(1024, activation='relu')
+x=Dropout(0.5)(x)
+x = Dense(1024, activation='relu')(x)
+x=Dropout(0.5)(x)
 x = Dense(1, activation='sigmoid')(x)
 model=Model(model.input,x)  
 

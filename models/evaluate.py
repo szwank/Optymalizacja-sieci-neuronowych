@@ -1,3 +1,4 @@
+# evaluate accuracy and auc based on outputs of network stored in results.npy file
 import numpy as np
 from sklearn.metrics import accuracy_score, roc_auc_score
 results = np.load('results.npy')

@@ -32,3 +32,5 @@ x
 knowledge_distillation_VGG16.py
 .vscode/
 logs/
+models/epoch*
+

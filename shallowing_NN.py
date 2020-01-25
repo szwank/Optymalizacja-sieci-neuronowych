@@ -208,8 +208,8 @@ def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlow
     number_of_classes = model.output_shape[1]
     model_hash = NNHasher.hash_model(model)
     FileManager.create_folder(score_output_directory)
-    score_file_name = 'NetworkA/' + model_hash
-    path_to_score_file = os.path.join([score_output_directory, score_file_name])
+    score_file_name = model_hash
+    path_to_score_file = os.path.join(score_output_directory, score_file_name)
 
     model.summary()
 
@@ -463,8 +463,8 @@ def train_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
     return NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
 
 
-
-def asses_network(model, generators_for_training: GeneratorsFlowStorage, batch_size: int, metrics: List[str] = ['accuracy']):
+def asses_network(model, generators_for_training: GeneratorsFlowStorage, batch_size: int,
+                  metrics: List[str] = ['accuracy']):
     optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
 
     number_of_model_outputs = len(model.outputs)
@@ -492,6 +492,7 @@ def asses_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
                                       verbose=1,
                                       )
     return scores
+
 
 def get_accuracy_of_group_of_filters_in_layer(filters_accuracy_dict: dict, conv_layer_number: int):
     filters_accuracy_in_layer = {}
@@ -596,7 +597,9 @@ def shallow_network_based_on_whole_layers_remove_random_filters(path_to_original
                                                                 remove_all_filters_if_below: float = 0.015,
                                                                 leave_all_filters_if_above: float = 0.1,
                                                                 minimal_number_of_filters_in_layer_after_removing=16):
-    """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data"""
+    """Metoda wypłycająca sieć, na podstawie pliku tekstowego  ze ścierzki path_to_assessing_data.
+    Metoda usuwa filtry z warstw konwolucyjnych na podstawie przyrostu dokładności klasyfikacij kolejnych warstw
+    konwolucyjnych. Usuwane są losowe filtry z warstw konwolucyjnych."""
 
     print('Wypłycanie sieci')
 

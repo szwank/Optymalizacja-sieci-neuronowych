@@ -25,26 +25,8 @@ from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFr
 from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 import gc
 import random
-
-
-def compare_weights_in_models(model1, model2):
-    lenght = min(len(model1.layers), len(model2.layers))
-    for i in range(lenght):
-        weights1 = model1.layers[i].get_weights()
-        weights2 = model2.layers[i].get_weights()
-
-        print(model1.layers[i].name)
-
-        if min(len(weights1), len(weights2)) > 1:
-            for j in range(min(len(weights1), len(weights2))):
-                result = np.array_equal(weights1[j], weights2[j])
-                print('Layer {}, part {}, result: {}'.format(i, j, result))
-        else:
-
-            result = np.array_equal(weights1, weights2)
-            print('Layer {}, result: {}'.format(i, result))
-
-        print('\n')
+from typing import List
+from keras.metrics import AUC
 
 
 def open_text_file(file_path: str, access_method: str = 'r', number_of_trials: int = 10):
@@ -217,9 +199,10 @@ def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int, ):
     return model["config"]["layers"][layer_number]['config']['filters']
 
 
-def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowStorage, size_of_clasificator,
-                         start_from_conv_layer=1, BATCH_SIZE=256, resume_testing=False):
-    """Function for testing whole conv layers. The increase of accuracy ow conv layers is checking."""
+def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowStorage, size_of_clasificator,
+                          start_from_conv_layer=1, batch_size=256, resume_testing=False,
+                          metrics=['accuracy']):
+    """Function for testing whole conv layers. The increase of accuracy of conv layers is checking."""
     print('Testowanie warstw konwolucyjnych')
     model = load_model(path_to_model)
     number_of_classes = model.output_shape[1]
@@ -236,8 +219,8 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
             start_from_conv_layer = check_on_with_layer_testing_was_stopped(score_file_name, model_architecture)
             start_from_conv_layer += 1
         else:
-            raise ValueError("There is no file {}. Check if file name is correct. If optymalization wasn't run before"
-                             "or assesing of any conv layer wasn't compleated run function with"
+            raise ValueError("There is no file {}. Check if file name is correct. If optimization wasn't run before"
+                             "or assessing of any conv layer wasn't completed run function with"
                              "resume_testing=False.".format(score_file_name))
 
     del (model)
@@ -260,14 +243,16 @@ def assesing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowS
                 for layer in cutted_model.layers:
                     layer.trainable = False
 
-                cutted_model = NNModifier.add_classifier_to_end(cutted_model, size_of_clasifier=size_of_clasificator)
+                cutted_model = NNModifier.add_classifier_to_end(cutted_model, size_of_classifier=size_of_clasificator)
                 cutted_model.load_weights(path_to_model, by_name=True)
                 cutted_model.summary()
 
                 cutted_model = clear_session_in_addition_to_model(cutted_model)
 
-                scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
-                                                 batch_size=BATCH_SIZE, model_ID=count_conv_layer)
+                cutted_model = train_network(cutted_model, generators_for_training=generators_for_training,
+                                             batch_size=batch_size, model_ID=count_conv_layer, metrics=metrics)
+
+                scores = asses_network(cutted_model, generators_for_training, batch_size, metrics)
 
                 add_score_to_file(score=scores, file_name=score_file_name,
                                   conv_layer_number=count_conv_layer)
@@ -369,8 +354,8 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
 
                         cutted_model = clear_session_in_addition_to_model(cutted_model)
 
-                        scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
-                                                         batch_size=BATCH_SIZE, model_ID=count_conv_layer)
+                        scores = train_network(cutted_model, generators_for_training=generators_for_training,
+                                               batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
                         add_partial_score_to_file(score=scores, file_name=score_file_name,
                                                   number_of_trained_clasificator=count_conv_layer)
@@ -389,8 +374,8 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
 
                     cutted_model = clear_session_in_addition_to_model(cutted_model)
 
-                    scores = train_and_asses_network(cutted_model, generators_for_training=generators_for_training,
-                                                     batch_size=BATCH_SIZE, model_ID=count_conv_layer)
+                    scores = train_network(cutted_model, generators_for_training=generators_for_training,
+                                           batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
                     add_partial_score_to_file(score=scores, file_name=score_file_name,
                                               number_of_trained_clasificator=count_conv_layer)
@@ -406,10 +391,11 @@ def clear_session_in_addition_to_model(model):
     return load_model('temp/model.hdf5')
 
 
-def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlowStorage, batch_size, model_ID):
+def train_network(model, generators_for_training: GeneratorsFlowStorage, batch_size: int, model_ID: int,
+                  class_weight: List[float] = None, metrics: List[str] = ['accuracy']):
     optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
 
-    number_of_model_outputs = len(cutted_model.outputs)
+    number_of_model_outputs = len(model.outputs)
 
     # number_of_classes = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
     #                                                                           shuffle=True).num_classes
@@ -422,10 +408,10 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
     loss = [loss_function] * number_of_model_outputs
     loss_weights = [1.0 / number_of_model_outputs] * number_of_model_outputs
 
-    cutted_model.compile(optimizer,
-                         loss=loss,
-                         metrics=['accuracy'],
-                         loss_weights=loss_weights)
+    model.compile(optimizer,
+                  loss=loss,
+                  metrics=metrics,
+                  loss_weights=loss_weights)
 
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     dir_name = str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") +
@@ -459,40 +445,51 @@ def train_and_asses_network(cutted_model, generators_for_training: GeneratorsFlo
 
     validation_generator = Data_Generator_for_Shallowing(validation_generator, number_of_model_outputs)
 
-    cutted_model.fit_generator(train_generator,
-                               steps_per_epoch=len(train_generator),
-                               verbose=1,
-                               epochs=10000,  # ilość epok treningu
-                               callbacks=[modelCheckPoint, earlyStopping, learning_rate_regulation],
-                               workers=4,
-                               validation_data=validation_generator,
-                               validation_steps=len(validation_generator),
-                               use_multiprocessing=False,
-                               shuffle=True,
-                               )
+    model.fit_generator(train_generator,
+                        steps_per_epoch=len(train_generator),
+                        verbose=1,
+                        epochs=10000,
+                        callbacks=[modelCheckPoint, earlyStopping, learning_rate_regulation],
+                        workers=4,
+                        validation_data=validation_generator,
+                        validation_steps=len(validation_generator),
+                        use_multiprocessing=False,
+                        shuffle=True,
+                        class_weight=class_weight
+                        )
 
-    K.clear_session()
+    return NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
 
-    cutted_model = NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
 
-    cutted_model.compile(optimizer,
-                         loss=loss,
-                         metrics=['accuracy'],
-                         loss_weights=loss_weights)
 
-    # test_generator = generators_for_training.get_test_data_generator_flow(batch_size=batch_size,
-    #                                                          shuffle=False)
-    # test_generator = Data_Generator_for_Shallowing(test_generator)
+def asses_network(model, generators_for_training: GeneratorsFlowStorage, batch_size: int, metrics: List[str] = ['accuracy']):
+    optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
 
-    scores = cutted_model.evaluate_generator(validation_generator,
-                                             steps=len(validation_generator),
-                                             verbose=1,
-                                             )
+    number_of_model_outputs = len(model.outputs)
 
-    K.clear_session()
-    print(scores)
+    if number_of_model_outputs is 2:
+        loss_function = 'binary_crossentropy'
+    else:
+        loss_function = 'categorical_crossentropy'
+
+    loss = [loss_function] * number_of_model_outputs
+    loss_weights = [1.0 / number_of_model_outputs] * number_of_model_outputs
+
+    model.compile(optimizer,
+                  loss=loss,
+                  metrics=metrics,
+                  loss_weights=loss_weights)
+
+    validation_generator = generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
+                                                                                      shuffle=False)
+
+    validation_generator = Data_Generator_for_Shallowing(validation_generator, number_of_model_outputs)
+
+    scores = model.evaluate_generator(validation_generator,
+                                      steps=len(validation_generator),
+                                      verbose=1,
+                                      )
     return scores
-
 
 def get_accuracy_of_group_of_filters_in_layer(filters_accuracy_dict: dict, conv_layer_number: int):
     filters_accuracy_in_layer = {}
@@ -618,7 +615,7 @@ def shallow_network_based_on_whole_layers_remove_random_filters(path_to_original
 
     for conv_layer_number in range(len(layers_accuracy_dict)):
 
-        number_of_filters_in_actual_layer = number_of_filters_in_conv_layer(model_dict, conv_layer_number+1)
+        number_of_filters_in_actual_layer = number_of_filters_in_conv_layer(model_dict, conv_layer_number + 1)
 
         actual_accuracy = accuracy_of_whole_layers[conv_layer_number] - accuracy_of_previous_not_removed_layer
         print('Accuracy increase in {} layer:{} %'.format(conv_layer_number + 1, actual_accuracy * 100))
@@ -789,15 +786,15 @@ def knowledge_distillation(path_to_shallowed_model,
 
     # Callback
     learning_rate_regulation = ReduceLROnPlateau(monitor=monitor, factor=0.1,
-                                                     patience=3,
-                                                     verbose=1, mode='auto', cooldown=3, min_lr=0.0005, min_delta=0.002)
+                                                 patience=3,
+                                                 verbose=1, mode='auto', cooldown=3, min_lr=0.0005, min_delta=0.002)
     tensorBoard = TensorBoard(log_dir=scierzka_logow, write_graph=False)  # Wizualizacja uczenia
     modelCheckPoint = ModelCheckpoint(  # Zapis sieci podczas uczenia
-            filepath=scierzka_zapisu + "weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
-            monitor=monitor,
-            save_best_only=True, period=1, save_weights_only=False)
+        filepath=scierzka_zapisu + "weights-improvement-{epoch:02d}-{val_accuracy_metric:.2f}.hdf5",
+        monitor=monitor,
+        save_best_only=True, period=1, save_weights_only=False)
     earlyStopping = EarlyStopping(monitor=monitor,
-                                      patience=7)  # zatrzymanie uczenia sieci jeżeli dokładność się nie zwiększa
+                                  patience=7)  # zatrzymanie uczenia sieci jeżeli dokładność się nie zwiększa
 
     original_model.layers.pop()
     original_logits = original_model.layers[-1].output

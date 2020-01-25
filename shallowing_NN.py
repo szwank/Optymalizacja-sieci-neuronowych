@@ -26,7 +26,7 @@ from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
 import gc
 import random
 from typing import List
-from keras.metrics import AUC
+from performance_functions import accuracy_performance
 
 
 def open_text_file(file_path: str, access_method: str = 'r', number_of_trials: int = 10):
@@ -201,7 +201,7 @@ def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int, ):
 
 def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowStorage, size_of_clasificator,
                           start_from_conv_layer=1, batch_size=256, resume_testing=False,
-                          metrics=['accuracy'], score_output_directory='Output/scores'):
+                          performance_function=accuracy_performance, score_output_directory='Output/scores'):
     """Function for testing whole conv layers. The increase of accuracy of conv layers is checking."""
     print('Testowanie warstw konwolucyjnych')
     model = load_model(path_to_model)
@@ -252,9 +252,9 @@ def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlow
                 cutted_model = clear_session_in_addition_to_model(cutted_model)
 
                 cutted_model = train_network(cutted_model, generators_for_training=generators_for_training,
-                                             batch_size=batch_size, model_ID=count_conv_layer, metrics=metrics)
+                                             batch_size=batch_size, model_ID=count_conv_layer)
 
-                scores = asses_network(cutted_model, generators_for_training, batch_size, metrics)
+                scores = asses_network(cutted_model, generators_for_training, batch_size, performance_function)
 
                 add_score_to_file(score=scores, path_to_file=score_file_name,
                                   conv_layer_number=count_conv_layer)
@@ -394,7 +394,7 @@ def clear_session_in_addition_to_model(model):
 
 
 def train_network(model, generators_for_training: GeneratorsFlowStorage, batch_size: int, model_ID: int,
-                  class_weight: List[float] = None, metrics: List[str] = ['accuracy']):
+                  class_weight: List[float] = None):
     optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
 
     number_of_model_outputs = len(model.outputs)
@@ -412,7 +412,7 @@ def train_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
 
     model.compile(optimizer,
                   loss=loss,
-                  metrics=metrics,
+                  metrics=['accuracy'],
                   loss_weights=loss_weights)
 
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
@@ -464,7 +464,7 @@ def train_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
 
 
 def asses_network(model, generators_for_training: GeneratorsFlowStorage, batch_size: int,
-                  metrics: List[str] = ['accuracy']):
+                  performance_function):
     optimizer = SGD(lr=0.01, momentum=0.9, nesterov=True)
 
     number_of_model_outputs = len(model.outputs)
@@ -479,19 +479,20 @@ def asses_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
 
     model.compile(optimizer,
                   loss=loss,
-                  metrics=metrics,
                   loss_weights=loss_weights)
 
     validation_generator = generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
                                                                                       shuffle=False)
+    targets = validation_generator.classes.reshape(-1,1)
 
     validation_generator = Data_Generator_for_Shallowing(validation_generator, number_of_model_outputs)
 
-    scores = model.evaluate_generator(validation_generator,
+    predictions = model.predict_generator(validation_generator,
                                       steps=len(validation_generator),
                                       verbose=1,
                                       )
-    return scores
+
+    return performance_function(predictions, targets)
 
 
 def get_accuracy_of_group_of_filters_in_layer(filters_accuracy_dict: dict, conv_layer_number: int):

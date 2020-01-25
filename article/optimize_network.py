@@ -9,7 +9,7 @@ from shallowing_NN import check_integrity_of_score_file, shallow_network_based_o
     assessing_conv_layers
 from assesing_cancer_tisue_networks import get_list_of_files_in_directory
 from utils.FileMenager import FileManager
-from keras.metrics import AUC
+from keras.metrics import AUC, accuracy
 import os
 import time
 from GeneratorStorage.GeneratorDataLoaderFromDisc import GeneratorDataLoaderFromDisc
@@ -84,7 +84,7 @@ def main():
 
     model = load_model(path_to_model)
     model_hash = NNHasher.hash_model(model)
-    path_to_score_file = os.path.join(['Output/scores', model_hash])
+    path_to_score_file = os.path.join('Output/scores', model_hash)
     K.clear_session()
 
 
@@ -98,7 +98,6 @@ def main():
                                       generators_for_training=generators_for_training,
                                       size_of_clasificator=(100, 100),
                                       batch_size=16,
-                                      metrics=[AUC]
                                       )
 
                 FileManager.create_folder('temp')

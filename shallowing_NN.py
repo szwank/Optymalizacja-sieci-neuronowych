@@ -98,14 +98,14 @@ def check_integrity_of_score_file(file_name: str, model_dict: dict):
         return broken_scores_in_conv_layers
 
 
-def add_score_to_file(score, file_name, conv_layer_number):
+def add_score_to_file(score, path_to_file, conv_layer_number):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
     loss = score[0]
     accuracy = score[1]
 
-    if os.path.exists(file_name):
-        file = open_text_file(file_name, "r", number_of_trials=100)
+    if os.path.exists(path_to_file):
+        file = open_text_file(path_to_file, "r", number_of_trials=100)
         json_string = file.read()
         dictionary = json.loads(json_string)
         subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
@@ -114,7 +114,7 @@ def add_score_to_file(score, file_name, conv_layer_number):
     else:
         dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
 
-    file = open_text_file(file_name, "w", number_of_trials=100)
+    file = open_text_file(path_to_file, "w", number_of_trials=100)
     json_string = json.dumps(dictionary)
     file.write(json_string)
     file.close()
@@ -201,13 +201,15 @@ def number_of_filters_in_conv_layer(model: dict, with_conv_layer: int, ):
 
 def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlowStorage, size_of_clasificator,
                           start_from_conv_layer=1, batch_size=256, resume_testing=False,
-                          metrics=['accuracy']):
+                          metrics=['accuracy'], score_output_directory='Output/scores'):
     """Function for testing whole conv layers. The increase of accuracy of conv layers is checking."""
     print('Testowanie warstw konwolucyjnych')
     model = load_model(path_to_model)
     number_of_classes = model.output_shape[1]
     model_hash = NNHasher.hash_model(model)
+    FileManager.create_folder(score_output_directory)
     score_file_name = 'NetworkA/' + model_hash
+    path_to_score_file = os.path.join([score_output_directory, score_file_name])
 
     model.summary()
 
@@ -254,7 +256,7 @@ def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlow
 
                 scores = asses_network(cutted_model, generators_for_training, batch_size, metrics)
 
-                add_score_to_file(score=scores, file_name=score_file_name,
+                add_score_to_file(score=scores, path_to_file=score_file_name,
                                   conv_layer_number=count_conv_layer)
                 K.clear_session()
 

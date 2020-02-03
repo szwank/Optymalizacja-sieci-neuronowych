@@ -7,18 +7,19 @@ from keras import backend as K
 from shallowing_NN import check_integrity_of_score_file, shallow_network_based_on_filters, knowledge_distillation, \
     shallow_network_based_on_whole_layers_remove_random_filters, shallow_network_based_on_whole_layers, \
     assessing_conv_layers
-from assesing_cancer_tisue_networks import get_list_of_files_in_directory
+
 from utils.FileMenager import FileManager
-from keras.metrics import AUC, accuracy
+
 import os
 import time
 from GeneratorStorage.GeneratorDataLoaderFromDisc import GeneratorDataLoaderFromDisc
 from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
 from NNLoader import NNLoader
 from keras.preprocessing.image import ImageDataGenerator
+from pathlib import Path
 
 def get_generators_for_training(batch_size=16):
-    dataset_location = '/media/dysk/datasets/isic_challenge_2017/'
+    dataset_location = Path('../data')
 
     train_data_gen = ImageDataGenerator(
         featurewise_std_normalization=True,
@@ -39,24 +40,18 @@ def get_generators_for_training(batch_size=16):
         rescale=1.0 / 255)
 
     mean_generator = iter(
-        mean_data_gen.flow_from_directory(os.path.join(dataset_location, 'valid'), class_mode='binary',
-                                          classes=['ben', 'mal'], target_size=(224, 224), batch_size=150,
+        mean_data_gen.flow_from_directory(dataset_location.joinpath('train').resolve(), class_mode='binary',
+                                          target_size=(224, 224), batch_size=150,
                                           shuffle=False))
     train_data_gen.fit(mean_generator.next()[0])
     valid_data_gen.fit(mean_generator.next()[0])
-    train_generator = train_data_gen.flow_from_directory(os.path.join(dataset_location, 'train'), class_mode='binary',
-                                                         classes=['ben', 'mal'], target_size=(224, 224),
-                                                         batch_size=batch_size, shuffle=True)
-    valid_generator = valid_data_gen.flow_from_directory(os.path.join(dataset_location, 'valid'), class_mode='binary',
-                                                         classes=['ben', 'mal'], target_size=(224, 224),
-                                                         batch_size=batch_size, shuffle=False)
 
-    data_loader = GeneratorDataLoaderFromDisc(path_to_training_data=os.path.join(dataset_location, 'test'),
-                                              path_to_validation_data=os.path.join(dataset_location, 'valid'),
-                                              path_to_test_data=os.path.join(dataset_location, 'test'),
+    data_loader = GeneratorDataLoaderFromDisc(path_to_training_data=dataset_location.joinpath('train').resolve(),
+                                              path_to_validation_data=dataset_location.joinpath('valid').resolve(),
+                                              path_to_test_data=dataset_location.joinpath('valid').resolve(),
                                               class_mode='binary',
-                                              classes=['ben', 'mal'],
-                                              target_size=(224, 224)
+                                              target_size=(224, 224),
+                                              classes=['dog', 'cat']
                                               )
 
     generators_for_training = GeneratorsFlowStorage(training_generator=train_data_gen,
@@ -80,7 +75,7 @@ def main():
 
     my_optymalization = True
 
-    path_to_model = '/media/dysk/models/epoch_25_val_loss_0.3064_val_acc_0.860'
+    path_to_model = '../models/epoch_03_val_loss_0.0935_val_acc_0.964'
 
     model = load_model(path_to_model)
     model_hash = NNHasher.hash_model(model)
@@ -96,7 +91,7 @@ def main():
 
                 assessing_conv_layers(path_to_model,
                                       generators_for_training=generators_for_training,
-                                      size_of_clasificator=(100, 100),
+                                      size_of_clasificator=(100, 1),
                                       batch_size=16,
                                       )
 

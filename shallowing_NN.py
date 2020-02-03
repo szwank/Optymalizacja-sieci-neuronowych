@@ -1,32 +1,34 @@
-from keras.preprocessing.image import ImageDataGenerator
+import datetime
+import gc
+import json
+import math
+import os
+import random
+import time
+from typing import List
+
+import keras.backend as K
+import numpy as np
+from keras.callbacks import ReduceLROnPlateau, TensorBoard, ModelCheckpoint, EarlyStopping
+from keras.layers import Softmax, Activation
 from keras.layers import concatenate
 from keras.models import Model, load_model, save_model
 from keras.optimizers import SGD
-from keras.layers import Softmax, Activation
-import keras.backend as K
-from keras.callbacks import ReduceLROnPlateau, TensorBoard, ModelCheckpoint, EarlyStopping
-import datetime
-import os
-from NNModifier import NNModifier
-from NNLoader import NNLoader
-from NNHasher import NNHasher
+from keras.preprocessing.image import ImageDataGenerator
+from scipy import interpolate
+import tensorflow as tf
 from DataGenerator_for_knowledge_distillation import DataGenerator_for_knowledge_distillation
-import json
+from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
+from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFromMemory
+from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
+from NNHasher import NNHasher
+from NNLoader import NNLoader
+from NNModifier import NNModifier
 from custom_loss_function import categorical_knowledge_distillation_loos, binary_knowledge_distillation_loos
-from utils.FileMenager import FileManager
 from custom_metrics import categorical_accuracy_metric, soft_categorical_crossentrophy, categorical_crossentropy_metric, \
     binary_accuracy_metric, binary_crossentropy_metric, soft_binary_crossentrophy
-import math
-import time
-from scipy import interpolate
-import numpy as np
-from GeneratorStorage.GeneratorsFlowStorage import GeneratorsFlowStorage
-from GeneratorStorage.GeneratorDataLoaderFromMemory import GeneratorDataLoaderFromMemory
-from Data_Generator_for_Shallowing import Data_Generator_for_Shallowing
-import gc
-import random
-from typing import List
 from performance_functions import accuracy_performance
+from utils.FileMenager import FileManager
 
 
 def open_text_file(file_path: str, access_method: str = 'r', number_of_trials: int = 10):
@@ -98,21 +100,19 @@ def check_integrity_of_score_file(file_name: str, model_dict: dict):
         return broken_scores_in_conv_layers
 
 
-def add_score_to_file(score, path_to_file, conv_layer_number):
+def add_score_to_file(loss, score, path_to_file, conv_layer_number):
     """Dopisanie wyniku klasyfikatora do pliku tekstowego."""
 
-    loss = score[0]
-    accuracy = score[1]
 
     if os.path.exists(path_to_file):
         file = open_text_file(path_to_file, "r", number_of_trials=100)
         json_string = file.read()
         dictionary = json.loads(json_string)
-        subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
+        subordinate_dictionary = {str(conv_layer_number): {'loss': loss, 'metric_result': score}}
         dictionary.update(subordinate_dictionary)
         file.close()
     else:
-        dictionary = {str(conv_layer_number): {'loss': loss, 'accuracy': accuracy}}
+        dictionary = {str(conv_layer_number): {'loss': loss, 'metric_result': score}}
 
     file = open_text_file(path_to_file, "w", number_of_trials=100)
     json_string = json.dumps(dictionary)
@@ -216,6 +216,8 @@ def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlow
     model_architecture = model.to_json(indent=4)
     model_architecture = json.loads(model_architecture)
 
+    K.clear_session()
+
     if resume_testing is True:
         if os.path.exists(score_file_name):
             start_from_conv_layer = check_on_with_layer_testing_was_stopped(score_file_name, model_architecture)
@@ -225,7 +227,6 @@ def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlow
                              "or assessing of any conv layer wasn't completed run function with"
                              "resume_testing=False.".format(score_file_name))
 
-    del (model)
 
     count_conv_layer = 0  # Licznik warstw konwolucyjnych.
     number_of_layers_in_model = len(model_architecture["config"]["layers"])
@@ -254,9 +255,9 @@ def assessing_conv_layers(path_to_model, generators_for_training: GeneratorsFlow
                 cutted_model = train_network(cutted_model, generators_for_training=generators_for_training,
                                              batch_size=batch_size, model_ID=count_conv_layer)
 
-                scores = asses_network(cutted_model, generators_for_training, batch_size, performance_function)
+                loss, scores = asses_network(cutted_model, generators_for_training, batch_size, performance_function)
 
-                add_score_to_file(score=scores, path_to_file=score_file_name,
+                add_score_to_file(loss=loss, score=scores, path_to_file=path_to_score_file,
                                   conv_layer_number=count_conv_layer)
                 K.clear_session()
 
@@ -376,10 +377,10 @@ def assesing_conv_filters(path_to_model, generators_for_training: GeneratorsFlow
 
                     cutted_model = clear_session_in_addition_to_model(cutted_model)
 
-                    scores = train_network(cutted_model, generators_for_training=generators_for_training,
+                    loss, scores = train_network(cutted_model, generators_for_training=generators_for_training,
                                            batch_size=BATCH_SIZE, model_ID=count_conv_layer)
 
-                    add_partial_score_to_file(score=scores, file_name=score_file_name,
+                    add_partial_score_to_file(loss=loss, score=scores, file_name=score_file_name,
                                               number_of_trained_clasificator=count_conv_layer)
                 K.clear_session()
 
@@ -402,18 +403,19 @@ def train_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
     # number_of_classes = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
     #                                                                           shuffle=True).num_classes
 
-    if number_of_model_outputs is 2:
+    if number_of_model_outputs <= 2:
         loss_function = 'binary_crossentropy'
     else:
         loss_function = 'categorical_crossentropy'
 
-    loss = [loss_function] * number_of_model_outputs
-    loss_weights = [1.0 / number_of_model_outputs] * number_of_model_outputs
+    # loss = [loss_function] * number_of_model_outputs
+    # loss_weights = [1.0 / number_of_model_outputs] * number_of_model_outputs
 
     model.compile(optimizer,
-                  loss=loss,
+                  loss=loss_function,
                   metrics=['accuracy'],
-                  loss_weights=loss_weights)
+                  # loss_weights=loss_weights
+                  )
 
     # Ustawienie ścieżki zapisu i stworzenie folderu jeżeli nie istnieje
     dir_name = str(datetime.datetime.now().strftime("%y-%m-%d %H-%M") +
@@ -440,12 +442,12 @@ def train_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
 
     train_generator = generators_for_training.get_train_data_generator_flow(batch_size=batch_size,
                                                                             shuffle=True)
-    train_generator = Data_Generator_for_Shallowing(train_generator, number_of_model_outputs)
+    # train_generator = Data_Generator_for_Shallowing(train_generator, number_of_model_outputs)
 
     validation_generator = generators_for_training.get_validation_data_generator_flow(batch_size=batch_size,
                                                                                       shuffle=False)
 
-    validation_generator = Data_Generator_for_Shallowing(validation_generator, number_of_model_outputs)
+    # validation_generator = Data_Generator_for_Shallowing(validation_generator, number_of_model_outputs)
 
     model.fit_generator(train_generator,
                         steps_per_epoch=len(train_generator),
@@ -460,6 +462,8 @@ def train_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
                         class_weight=class_weight
                         )
 
+    model.save(relative_path_to_save_model + "/weights-improvement-00-9999999999999999999.hdf5")    # save at least model
+
     return NNLoader.load_best_model_from_dir(absolute_path_to_save_model, mode='lowest')
 
 
@@ -469,7 +473,7 @@ def asses_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
 
     number_of_model_outputs = len(model.outputs)
 
-    if number_of_model_outputs is 2:
+    if number_of_model_outputs <= 2:
         loss_function = 'binary_crossentropy'
     else:
         loss_function = 'categorical_crossentropy'
@@ -491,8 +495,9 @@ def asses_network(model, generators_for_training: GeneratorsFlowStorage, batch_s
                                       steps=len(validation_generator),
                                       verbose=1,
                                       )
+    loss = model.evaluate_generator(validation_generator)
 
-    return performance_function(predictions, targets)
+    return loss, performance_function(predictions, targets)
 
 
 def get_accuracy_of_group_of_filters_in_layer(filters_accuracy_dict: dict, conv_layer_number: int):

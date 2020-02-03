@@ -92,7 +92,7 @@ def main():
                 assessing_conv_layers(path_to_model,
                                       generators_for_training=generators_for_training,
                                       size_of_clasificator=(100, 1),
-                                      batch_size=16,
+                                      batch_size=8,
                                       )
 
                 FileManager.create_folder('temp')
